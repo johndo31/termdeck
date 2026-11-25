@@ -203,10 +203,10 @@ export class SessionStatusDetector {
     const workingHint = this.detectWorkingHint(recentLines, oscTitleWorking);
 
     if (workingHint) {
-      this.setState("working", workingHint, standaloneBell);
+      this.setState("working", workingHint, false);
     } else if (clean.trim().length > 0 && !IDLE_PROMPT_RE.test(recentLines)) {
-      this.setState("working", this.agent === "shell" ? "Running…" : "Working…", standaloneBell);
-    } else if (standaloneBell) {
+      this.setState("working", this.agent === "shell" ? "Running…" : "Working…", false);
+    } else if (standaloneBell && this.status !== "working") {
       this.onChange(this.state, true);
     }
 

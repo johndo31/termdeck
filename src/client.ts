@@ -116,7 +116,7 @@ let dockBounceEnabled = localStorage.getItem(STORAGE_DOCK_BOUNCE_KEY) !== "0";
 let notifyOnDecision = localStorage.getItem(STORAGE_NOTIFY_DECISION_KEY) !== "0";
 let notifyOnComplete = localStorage.getItem(STORAGE_NOTIFY_COMPLETE_KEY) === "1";
 let notifyOnExit = localStorage.getItem(STORAGE_NOTIFY_EXIT_KEY) === "1";
-let notifyOnBell = localStorage.getItem(STORAGE_NOTIFY_BELL_KEY) !== "0";
+let notifyOnBell = localStorage.getItem(STORAGE_NOTIFY_BELL_KEY) === "1";
 let termFontSize = Math.max(
   MIN_FONT_SIZE,
   Math.min(MAX_FONT_SIZE, Number(localStorage.getItem(STORAGE_FONT_SIZE_KEY)) || DEFAULT_FONT_SIZE)
@@ -838,7 +838,7 @@ function connectEventsWs() {
         updateSessionStatus(msg.sessionId, msg.status, msg.statusDetail, msg.backend);
       } else if (msg.type === "bell" && msg.sessionId) {
         const s = sessions.find((x) => x.id === msg.sessionId);
-        if (s && notifyOnBell) {
+        if (s && notifyOnBell && msg.status !== "working") {
           maybeNotifyDecision(s, msg.statusDetail || "Terminal bell");
         }
       }
@@ -1507,7 +1507,7 @@ document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   notifyOnDecision = true;
   notifyOnComplete = false;
   notifyOnExit = false;
-  notifyOnBell = true;
+  notifyOnBell = false;
   localStorage.setItem(STORAGE_UI_SIZE_KEY, String(uiFontSize));
   localStorage.setItem(STORAGE_SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, "1");
@@ -1517,7 +1517,7 @@ document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   localStorage.setItem(STORAGE_NOTIFY_DECISION_KEY, "1");
   localStorage.setItem(STORAGE_NOTIFY_COMPLETE_KEY, "0");
   localStorage.setItem(STORAGE_NOTIFY_EXIT_KEY, "0");
-  localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, "1");
+  localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, "0");
   setTerminalFontSize(DEFAULT_FONT_SIZE);
   persistPrefs();
   applyAppearance();
