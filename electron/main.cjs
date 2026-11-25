@@ -233,7 +233,7 @@ ipcMain.on("termdeck:notify", (_event, payload) => {
   const body = typeof payload.body === "string" && payload.body.trim() ? payload.body.trim() : "Waiting for your decision";
   const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
 
-  if (Notification.isSupported()) {
+  if (payload.banner !== false && Notification.isSupported()) {
     const n = new Notification({ title, body, silent: false });
     n.on("failed", () => {
       if (process.platform === "darwin") {

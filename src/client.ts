@@ -11,7 +11,7 @@ declare global {
       setBadge: (count: number) => void;
       pickFolder: (defaultPath?: string) => Promise<string | null>;
       openExternal?: (url: string) => void;
-      notify?: (payload: { sessionId: string; title: string; body: string; bounce?: boolean }) => void;
+      notify?: (payload: { sessionId: string; title: string; body: string; banner?: boolean; bounce?: boolean }) => void;
       onSelectSession?: (cb: (sessionId: string) => void) => void;
       onFontZoom?: (cb: (delta: number) => void) => void;
     };
@@ -83,6 +83,7 @@ function agentIconSvg(agent: AgentKind, size = 15): string {
 const STORAGE_ACTIVE_KEY = "termdeck:activeSessionId";
 const STORAGE_NOTIFY_KEY = "termdeck:notifyEnabled";
 const STORAGE_NOTIFY_UNFOCUSED_KEY = "termdeck:notifyOnlyUnfocused";
+const STORAGE_NOTIFY_BANNER_KEY = "termdeck:notifyBanner";
 const STORAGE_DOCK_BADGE_KEY = "termdeck:dockBadge";
 const STORAGE_DOCK_BOUNCE_KEY = "termdeck:dockBounce";
 const STORAGE_NOTIFY_DECISION_KEY = "termdeck:notifyOnDecision";
@@ -109,6 +110,7 @@ let sessions: SessionView[] = [];
 let activeSessionId: string | null = localStorage.getItem(STORAGE_ACTIVE_KEY);
 let notifyEnabled = localStorage.getItem(STORAGE_NOTIFY_KEY) === "1";
 let notifyOnlyUnfocused = localStorage.getItem(STORAGE_NOTIFY_UNFOCUSED_KEY) !== "0";
+let notifyBannerEnabled = localStorage.getItem(STORAGE_NOTIFY_BANNER_KEY) !== "0";
 let dockBadgeEnabled = localStorage.getItem(STORAGE_DOCK_BADGE_KEY) !== "0";
 let dockBounceEnabled = localStorage.getItem(STORAGE_DOCK_BOUNCE_KEY) !== "0";
 let notifyOnDecision = localStorage.getItem(STORAGE_NOTIFY_DECISION_KEY) !== "0";
@@ -158,6 +160,7 @@ const valSidebarWidthEl = document.getElementById("val-sidebar-width")!;
 const notifySubsettingsEl = document.getElementById("notify-subsettings")!;
 const chkNotifyEnabledEl = document.getElementById("chk-notify-enabled") as HTMLInputElement;
 const chkNotifyUnfocusedEl = document.getElementById("chk-notify-unfocused") as HTMLInputElement;
+const chkNotifyBannerEl = document.getElementById("chk-notify-banner") as HTMLInputElement;
 const chkDockBadgeEl = document.getElementById("chk-dock-badge") as HTMLInputElement;
 const chkDockBounceEl = document.getElementById("chk-dock-bounce") as HTMLInputElement;
 const chkNotifyDecisionEl = document.getElementById("chk-notify-decision") as HTMLInputElement;
@@ -654,11 +657,19 @@ function maybeNotifyDecision(session: SessionView, detail?: string) {
   const body = detail || "Waiting for your decision";
 
   if (window.termdeckDesktop?.notify) {
-    window.termdeckDesktop.notify({ sessionId: session.id, title, body, bounce: dockBounceEnabled });
+    if (notifyBannerEnabled || dockBounceEnabled) {
+      window.termdeckDesktop.notify({
+        sessionId: session.id,
+        title,
+        body,
+        banner: notifyBannerEnabled,
+        bounce: dockBounceEnabled,
+      });
+    }
     return;
   }
 
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (!notifyBannerEnabled || !("Notification" in window) || Notification.permission !== "granted") return;
   const n = new Notification(title, {
     body,
     tag: `termdeck-${session.id}`,
@@ -1152,6 +1163,7 @@ function applyAppearance() {
   valSidebarWidthEl.textContent = `${sidebarWidth}px`;
   chkNotifyEnabledEl.checked = notifyEnabled;
   chkNotifyUnfocusedEl.checked = notifyOnlyUnfocused;
+  chkNotifyBannerEl.checked = notifyBannerEnabled;
   chkDockBadgeEl.checked = dockBadgeEnabled;
   chkDockBounceEl.checked = dockBounceEnabled;
   chkNotifyDecisionEl.checked = notifyOnDecision;
@@ -1358,6 +1370,11 @@ chkNotifyUnfocusedEl.addEventListener("change", () => {
   localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, notifyOnlyUnfocused ? "1" : "0");
 });
 
+chkNotifyBannerEl.addEventListener("change", () => {
+  notifyBannerEnabled = chkNotifyBannerEl.checked;
+  localStorage.setItem(STORAGE_NOTIFY_BANNER_KEY, notifyBannerEnabled ? "1" : "0");
+});
+
 chkDockBadgeEl.addEventListener("change", () => {
   dockBadgeEnabled = chkDockBadgeEl.checked;
   localStorage.setItem(STORAGE_DOCK_BADGE_KEY, dockBadgeEnabled ? "1" : "0");
@@ -1399,6 +1416,7 @@ document.getElementById("btn-notify-test")!.addEventListener("click", () => {
       sessionId: activeSessionId || "",
       title: "termdeck test notification",
       body: "Notifications are working.",
+      banner: notifyBannerEnabled,
       bounce: dockBounceEnabled,
     });
   } else if ("Notification" in window && Notification.permission === "granted") {
@@ -1410,6 +1428,7 @@ document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   uiFontSize = DEFAULT_UI_SIZE;
   sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
   notifyOnlyUnfocused = true;
+  notifyBannerEnabled = true;
   dockBadgeEnabled = true;
   dockBounceEnabled = true;
   notifyOnDecision = true;
@@ -1419,6 +1438,7 @@ document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   localStorage.setItem(STORAGE_UI_SIZE_KEY, String(uiFontSize));
   localStorage.setItem(STORAGE_SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, "1");
+  localStorage.setItem(STORAGE_NOTIFY_BANNER_KEY, "1");
   localStorage.setItem(STORAGE_DOCK_BADGE_KEY, "1");
   localStorage.setItem(STORAGE_DOCK_BOUNCE_KEY, "1");
   localStorage.setItem(STORAGE_NOTIFY_DECISION_KEY, "1");
