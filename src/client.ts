@@ -131,6 +131,7 @@ let selectedModalAgent: AgentKind = "claude";
 let discoveredForCwd: DiscoveredSession[] = [];
 let selectedDiscoveredId: string | null = null;
 let discoverTimer: ReturnType<typeof setTimeout> | null = null;
+const unreadSessionIds = new Set<string>();
 const mounted = new Map<string, MountedTerminal>();
 
 // DOM refs
@@ -296,12 +297,13 @@ function renderAttentionBar() {
 }
 
 function updateDocumentTitle() {
-  const decisionCount = sessions.filter((s) => s.status === "needs_input").length;
+  const decisionIds = sessions.filter((s) => s.status === "needs_input").map((s) => s.id);
+  const badgeCount = new Set([...decisionIds, ...unreadSessionIds]).size;
   const workingCount = sessions.filter((s) => s.status === "working").length;
-  const prefix = decisionCount > 0 ? `(${decisionCount}!) ` : workingCount > 0 ? "● " : "";
+  const prefix = badgeCount > 0 ? `(${badgeCount}!) ` : workingCount > 0 ? "● " : "";
   const s = sessions.find((x) => x.id === activeSessionId);
   document.title = s ? `${prefix}${s.title} · ${s.project} — termdeck` : `${prefix}termdeck`;
-  window.termdeckDesktop?.setBadge(dockBadgeEnabled ? decisionCount : 0);
+  window.termdeckDesktop?.setBadge(dockBadgeEnabled ? badgeCount : 0);
 }
 
 function renderSidebar() {
@@ -425,6 +427,7 @@ function renderHeader() {
 
 function selectSession(id: string) {
   activeSessionId = id;
+  unreadSessionIds.delete(id);
   localStorage.setItem(STORAGE_ACTIVE_KEY, id);
   emptyStateEl.classList.add("hidden");
 
@@ -624,6 +627,9 @@ function maybeNotifyDecision(session: SessionView, detail?: string) {
   const appFocused = document.hasFocus() && document.visibilityState === "visible";
   if (notifyOnlyUnfocused && appFocused) return;
   if (appFocused && session.id === activeSessionId) return;
+
+  unreadSessionIds.add(session.id);
+  updateDocumentTitle();
 
   const title = `${session.title} (${session.project})`;
   const body = detail || "Waiting for your decision";
@@ -1192,6 +1198,10 @@ chkNotifyBellEl.addEventListener("change", () => {
 
 document.getElementById("btn-notify-test")!.addEventListener("click", () => {
   if (window.termdeckDesktop?.notify) {
+    if (dockBadgeEnabled) {
+      window.termdeckDesktop.setBadge(1);
+      setTimeout(() => updateDocumentTitle(), 3500);
+    }
     window.termdeckDesktop.notify({
       sessionId: activeSessionId || "",
       title: "termdeck test notification",
@@ -1249,6 +1259,12 @@ sidebarResizerEl.addEventListener("mousedown", (e) => {
 
   window.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onUp);
+});
+
+window.addEventListener("focus", () => {
+  if (activeSessionId && unreadSessionIds.delete(activeSessionId)) {
+    updateDocumentTitle();
+  }
 });
 
 window.termdeckDesktop?.onFontZoom?.((delta) => adjustTerminalFontSize(delta));
