@@ -7,10 +7,27 @@ export const TERMDECK_DIR = join(homedir(), ".termdeck");
 const SESSIONS_FILE = join(TERMDECK_DIR, "sessions.json");
 const CONFIG_FILE = join(TERMDECK_DIR, "config.json");
 
+export interface UiPrefs {
+  activeSessionId?: string | null;
+  termFontSize?: number;
+  uiFontSize?: number;
+  sidebarWidth?: number;
+  notifyEnabled?: boolean;
+  notifyOnlyUnfocused?: boolean;
+  notifyBannerEnabled?: boolean;
+  dockBadgeEnabled?: boolean;
+  dockBounceEnabled?: boolean;
+  notifyOnDecision?: boolean;
+  notifyOnComplete?: boolean;
+  notifyOnExit?: boolean;
+  notifyOnBell?: boolean;
+}
+
 export interface TermdeckConfig {
   remoteAccess: boolean;
   remotePort: number;
   authToken: string;
+  prefs?: UiPrefs;
 }
 
 export function generateAuthToken(): string {
@@ -34,6 +51,7 @@ export function loadConfig(): TermdeckConfig {
       remoteAccess: Boolean(parsed.remoteAccess),
       remotePort: Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : 3434,
       authToken: typeof parsed.authToken === "string" ? parsed.authToken : "",
+      prefs: parsed.prefs && typeof parsed.prefs === "object" ? parsed.prefs : undefined,
     };
   } catch {
     return defaults;

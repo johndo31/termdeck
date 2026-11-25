@@ -202,6 +202,78 @@ const discoveredListEl = document.getElementById("discovered-list")!;
 const inputCustomCmdEl = document.getElementById("input-custom-cmd") as HTMLInputElement;
 const inputCustomResumeEl = document.getElementById("input-custom-resume") as HTMLInputElement;
 
+let prefsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function persistPrefs() {
+  localStorage.setItem(STORAGE_FONT_SIZE_KEY, String(termFontSize));
+  localStorage.setItem(STORAGE_UI_SIZE_KEY, String(uiFontSize));
+  localStorage.setItem(STORAGE_SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+  localStorage.setItem(STORAGE_NOTIFY_KEY, notifyEnabled ? "1" : "0");
+  localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, notifyOnlyUnfocused ? "1" : "0");
+  localStorage.setItem(STORAGE_NOTIFY_BANNER_KEY, notifyBannerEnabled ? "1" : "0");
+  localStorage.setItem(STORAGE_DOCK_BADGE_KEY, dockBadgeEnabled ? "1" : "0");
+  localStorage.setItem(STORAGE_DOCK_BOUNCE_KEY, dockBounceEnabled ? "1" : "0");
+  localStorage.setItem(STORAGE_NOTIFY_DECISION_KEY, notifyOnDecision ? "1" : "0");
+  localStorage.setItem(STORAGE_NOTIFY_COMPLETE_KEY, notifyOnComplete ? "1" : "0");
+  localStorage.setItem(STORAGE_NOTIFY_EXIT_KEY, notifyOnExit ? "1" : "0");
+  localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, notifyOnBell ? "1" : "0");
+
+  if (prefsSaveTimer) clearTimeout(prefsSaveTimer);
+  prefsSaveTimer = setTimeout(() => {
+    void fetch("/api/prefs", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        activeSessionId,
+        termFontSize,
+        uiFontSize,
+        sidebarWidth,
+        notifyEnabled,
+        notifyOnlyUnfocused,
+        notifyBannerEnabled,
+        dockBadgeEnabled,
+        dockBounceEnabled,
+        notifyOnDecision,
+        notifyOnComplete,
+        notifyOnExit,
+        notifyOnBell,
+      }),
+    }).catch(() => {});
+  }, 150);
+}
+
+async function loadSavedPrefs() {
+  try {
+    const res = await fetch("/api/prefs");
+    if (!res.ok) return;
+    const { prefs } = (await res.json()) as { prefs?: Record<string, unknown> };
+    if (!prefs) return;
+    if (typeof prefs.activeSessionId === "string" && prefs.activeSessionId) {
+      activeSessionId = prefs.activeSessionId;
+    }
+    if (typeof prefs.termFontSize === "number") {
+      termFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, Math.round(prefs.termFontSize)));
+    }
+    if (typeof prefs.uiFontSize === "number") {
+      uiFontSize = Math.max(12, Math.min(18, Math.round(prefs.uiFontSize)));
+    }
+    if (typeof prefs.sidebarWidth === "number") {
+      sidebarWidth = Math.max(180, Math.min(360, Math.round(prefs.sidebarWidth)));
+    }
+    if (typeof prefs.notifyEnabled === "boolean") notifyEnabled = prefs.notifyEnabled;
+    if (typeof prefs.notifyOnlyUnfocused === "boolean") notifyOnlyUnfocused = prefs.notifyOnlyUnfocused;
+    if (typeof prefs.notifyBannerEnabled === "boolean") notifyBannerEnabled = prefs.notifyBannerEnabled;
+    if (typeof prefs.dockBadgeEnabled === "boolean") dockBadgeEnabled = prefs.dockBadgeEnabled;
+    if (typeof prefs.dockBounceEnabled === "boolean") dockBounceEnabled = prefs.dockBounceEnabled;
+    if (typeof prefs.notifyOnDecision === "boolean") notifyOnDecision = prefs.notifyOnDecision;
+    if (typeof prefs.notifyOnComplete === "boolean") notifyOnComplete = prefs.notifyOnComplete;
+    if (typeof prefs.notifyOnExit === "boolean") notifyOnExit = prefs.notifyOnExit;
+    if (typeof prefs.notifyOnBell === "boolean") notifyOnBell = prefs.notifyOnBell;
+  } catch {
+    // ignore
+  }
+}
+
 function wsUrl(path: string): string {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${location.host}${path}`;
@@ -445,6 +517,7 @@ function selectSession(id: string) {
   activeSessionId = id;
   unreadSessionIds.delete(id);
   localStorage.setItem(STORAGE_ACTIVE_KEY, id);
+  persistPrefs();
   emptyStateEl.classList.add("hidden");
 
   // Auto-close slide-over sidebar drawer on mobile after picking a session
@@ -1177,7 +1250,7 @@ function setTerminalFontSize(nextSize: number) {
   const clamped = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, Math.round(nextSize)));
   if (clamped === termFontSize) return;
   termFontSize = clamped;
-  localStorage.setItem(STORAGE_FONT_SIZE_KEY, String(termFontSize));
+  persistPrefs();
   applyAppearance();
   for (const m of mounted.values()) {
     m.term.options.fontSize = termFontSize;
@@ -1316,7 +1389,7 @@ settingsBackdropEl.addEventListener("click", (e) => {
 
 rangeUiSizeEl.addEventListener("input", () => {
   uiFontSize = Math.max(12, Math.min(18, Number(rangeUiSizeEl.value) || DEFAULT_UI_SIZE));
-  localStorage.setItem(STORAGE_UI_SIZE_KEY, String(uiFontSize));
+  persistPrefs();
   applyAppearance();
 });
 
@@ -1326,14 +1399,14 @@ rangeTermSizeEl.addEventListener("input", () => {
 
 rangeSidebarWidthEl.addEventListener("input", () => {
   sidebarWidth = Math.max(180, Math.min(360, Number(rangeSidebarWidthEl.value) || DEFAULT_SIDEBAR_WIDTH));
-  localStorage.setItem(STORAGE_SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+  persistPrefs();
   applyAppearance();
 });
 
 async function setNotificationsEnabled(next: boolean, sendConfirmation = false) {
   if (window.termdeckDesktop?.notify) {
     notifyEnabled = next;
-    localStorage.setItem(STORAGE_NOTIFY_KEY, notifyEnabled ? "1" : "0");
+    persistPrefs();
     syncNotifyBtn();
     applyAppearance();
     if (notifyEnabled && sendConfirmation) {
@@ -1349,14 +1422,14 @@ async function setNotificationsEnabled(next: boolean, sendConfirmation = false) 
   if (!("Notification" in window)) return;
   if (!next) {
     notifyEnabled = false;
-    localStorage.setItem(STORAGE_NOTIFY_KEY, "0");
+    persistPrefs();
     syncNotifyBtn();
     applyAppearance();
     return;
   }
   const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
   notifyEnabled = perm === "granted";
-  localStorage.setItem(STORAGE_NOTIFY_KEY, notifyEnabled ? "1" : "0");
+  persistPrefs();
   syncNotifyBtn();
   applyAppearance();
 }
@@ -1367,43 +1440,43 @@ chkNotifyEnabledEl.addEventListener("change", () => {
 
 chkNotifyUnfocusedEl.addEventListener("change", () => {
   notifyOnlyUnfocused = chkNotifyUnfocusedEl.checked;
-  localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, notifyOnlyUnfocused ? "1" : "0");
+  persistPrefs();
 });
 
 chkNotifyBannerEl.addEventListener("change", () => {
   notifyBannerEnabled = chkNotifyBannerEl.checked;
-  localStorage.setItem(STORAGE_NOTIFY_BANNER_KEY, notifyBannerEnabled ? "1" : "0");
+  persistPrefs();
 });
 
 chkDockBadgeEl.addEventListener("change", () => {
   dockBadgeEnabled = chkDockBadgeEl.checked;
-  localStorage.setItem(STORAGE_DOCK_BADGE_KEY, dockBadgeEnabled ? "1" : "0");
+  persistPrefs();
   updateDocumentTitle();
 });
 
 chkDockBounceEl.addEventListener("change", () => {
   dockBounceEnabled = chkDockBounceEl.checked;
-  localStorage.setItem(STORAGE_DOCK_BOUNCE_KEY, dockBounceEnabled ? "1" : "0");
+  persistPrefs();
 });
 
 chkNotifyDecisionEl.addEventListener("change", () => {
   notifyOnDecision = chkNotifyDecisionEl.checked;
-  localStorage.setItem(STORAGE_NOTIFY_DECISION_KEY, notifyOnDecision ? "1" : "0");
+  persistPrefs();
 });
 
 chkNotifyCompleteEl.addEventListener("change", () => {
   notifyOnComplete = chkNotifyCompleteEl.checked;
-  localStorage.setItem(STORAGE_NOTIFY_COMPLETE_KEY, notifyOnComplete ? "1" : "0");
+  persistPrefs();
 });
 
 chkNotifyExitEl.addEventListener("change", () => {
   notifyOnExit = chkNotifyExitEl.checked;
-  localStorage.setItem(STORAGE_NOTIFY_EXIT_KEY, notifyOnExit ? "1" : "0");
+  persistPrefs();
 });
 
 chkNotifyBellEl.addEventListener("change", () => {
   notifyOnBell = chkNotifyBellEl.checked;
-  localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, notifyOnBell ? "1" : "0");
+  persistPrefs();
 });
 
 document.getElementById("btn-notify-test")!.addEventListener("click", () => {
@@ -1446,6 +1519,7 @@ document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   localStorage.setItem(STORAGE_NOTIFY_EXIT_KEY, "0");
   localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, "1");
   setTerminalFontSize(DEFAULT_FONT_SIZE);
+  persistPrefs();
   applyAppearance();
   updateDocumentTitle();
 });
@@ -1465,7 +1539,7 @@ sidebarResizerEl.addEventListener("mousedown", (e) => {
   const onUp = () => {
     sidebarEl.classList.remove("resizing");
     sidebarResizerEl.classList.remove("dragging");
-    localStorage.setItem(STORAGE_SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+    persistPrefs();
     window.removeEventListener("mousemove", onMove);
     window.removeEventListener("mouseup", onUp);
   };
@@ -1558,6 +1632,7 @@ async function boot() {
   if (window.innerWidth <= 720) {
     sidebarEl.classList.add("collapsed");
   }
+  await loadSavedPrefs();
   applyAppearance();
   syncNotifyBtn();
   await fetchMeta();

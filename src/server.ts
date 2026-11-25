@@ -243,6 +243,18 @@ function createServerHandlers(isRemoteListener: boolean) {
       });
     }
 
+    if (pathname === "/api/prefs") {
+      if (req.method === "GET") {
+        return json({ prefs: config.prefs ?? {} });
+      }
+      if (req.method === "PATCH") {
+        const body = (await req.json()) as Record<string, unknown>;
+        config.prefs = { ...(config.prefs ?? {}), ...body };
+        saveConfig(config);
+        return json({ prefs: config.prefs });
+      }
+    }
+
     if (pathname === "/api/remote-config") {
       if (req.method === "GET") {
         return json(buildRemoteConfigPayload(srv.port));
