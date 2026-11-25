@@ -1088,9 +1088,22 @@ body {
 
 .modal-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   padding-top: 4px;
+}
+
+.modal-footer .header-btn,
+.modal-footer .btn-primary,
+.modal-footer .btn-danger {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebar-empty {
