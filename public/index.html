@@ -60,6 +60,7 @@
         </div>
       </aside>
       <div id="sidebar-resizer" class="sidebar-resizer" title="Drag to resize sidebar"></div>
+      <div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
 
       <main class="main">
         <header id="term-header" class="term-header">
@@ -120,6 +121,18 @@
           </div>
           <div id="terminals-mount" class="terminals-mount"></div>
         </section>
+
+        <div id="mobile-keybar" class="mobile-keybar" aria-label="Quick terminal keys">
+          <button type="button" class="mkey" data-seq="&#x1b;">Esc</button>
+          <button type="button" class="mkey" data-seq="&#x09;">Tab</button>
+          <button type="button" class="mkey" data-seq="&#x1b;[A">↑</button>
+          <button type="button" class="mkey" data-seq="&#x1b;[B">↓</button>
+          <button type="button" class="mkey" data-seq="1">1</button>
+          <button type="button" class="mkey" data-seq="2">2</button>
+          <button type="button" class="mkey mkey-danger" data-seq="&#x03;">^C</button>
+          <button type="button" class="mkey mkey-primary" data-seq="&#x0d;">Enter</button>
+          <button type="button" class="mkey" data-action="bottom" title="Scroll to bottom">End</button>
+        </div>
       </main>
     </div>
 
@@ -304,6 +317,37 @@
                   </span>
                   <input id="chk-notify-bell" class="switch-input" type="checkbox" checked />
                 </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-section-header">
+              <span class="settings-section-title">Remote / VPN Access</span>
+              <span id="remote-status-badge" class="remote-status-badge">Local only</span>
+            </div>
+            <div class="settings-card">
+              <label class="setting-toggle">
+                <span class="setting-toggle-text">
+                  <span>Allow phone / VPN access</span>
+                  <span class="muted">Listen on fixed port with token login</span>
+                </span>
+                <input id="chk-remote-access" class="switch-input" type="checkbox" />
+              </label>
+
+              <div id="remote-subsettings" class="notify-subsettings disabled">
+                <div class="setting-divider"></div>
+
+                <div class="remote-port-row">
+                  <label class="remote-port-label" for="input-remote-port">Port</label>
+                  <input id="input-remote-port" class="remote-port-input" type="number" min="1024" max="65535" value="3434" />
+                  <button type="button" id="btn-rotate-token" class="header-btn">New Token</button>
+                </div>
+
+                <div id="remote-urls-list" class="remote-urls-list"></div>
+                <div id="remote-restart-note" class="remote-restart-note hidden">
+                  Quit (⌘Q) and reopen termdeck to apply remote binding changes.
+                </div>
               </div>
             </div>
           </div>

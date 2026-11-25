@@ -136,6 +136,9 @@ const mounted = new Map<string, MountedTerminal>();
 
 // DOM refs
 const sidebarEl = document.getElementById("sidebar")!;
+const sidebarBackdropEl = document.getElementById("sidebar-backdrop")!;
+const mobileKeybarEl = document.getElementById("mobile-keybar")!;
+const appEl = document.getElementById("app")!;
 const attentionBarEl = document.getElementById("attention-bar")!;
 const sessionListEl = document.getElementById("session-list")!;
 const persistencePillEl = document.getElementById("persistence-pill")!;
@@ -161,6 +164,13 @@ const chkNotifyDecisionEl = document.getElementById("chk-notify-decision") as HT
 const chkNotifyCompleteEl = document.getElementById("chk-notify-complete") as HTMLInputElement;
 const chkNotifyExitEl = document.getElementById("chk-notify-exit") as HTMLInputElement;
 const chkNotifyBellEl = document.getElementById("chk-notify-bell") as HTMLInputElement;
+const chkRemoteAccessEl = document.getElementById("chk-remote-access") as HTMLInputElement;
+const remoteSubsettingsEl = document.getElementById("remote-subsettings")!;
+const remoteStatusBadgeEl = document.getElementById("remote-status-badge")!;
+const inputRemotePortEl = document.getElementById("input-remote-port") as HTMLInputElement;
+const btnRotateTokenEl = document.getElementById("btn-rotate-token") as HTMLButtonElement;
+const remoteUrlsListEl = document.getElementById("remote-urls-list")!;
+const remoteRestartNoteEl = document.getElementById("remote-restart-note")!;
 const headerSessionInfoEl = document.getElementById("header-session-info")!;
 const headerEmptyTitleEl = document.getElementById("header-empty-title")!;
 const headerActionsEl = document.getElementById("header-actions")!;
@@ -433,6 +443,12 @@ function selectSession(id: string) {
   unreadSessionIds.delete(id);
   localStorage.setItem(STORAGE_ACTIVE_KEY, id);
   emptyStateEl.classList.add("hidden");
+
+  // Auto-close slide-over sidebar drawer on mobile after picking a session
+  if (window.innerWidth <= 720) {
+    sidebarEl.classList.add("collapsed");
+    sidebarBackdropEl.classList.add("hidden");
+  }
 
   for (const [sid, m] of mounted) {
     m.el.classList.toggle("active", sid === id);
@@ -956,8 +972,15 @@ newSessionFormEl.addEventListener("submit", async (e) => {
   selectSession(data.session.id);
 });
 
+function syncSidebarBackdrop() {
+  const isMobile = window.innerWidth <= 720;
+  const isOpen = !sidebarEl.classList.contains("collapsed");
+  sidebarBackdropEl.classList.toggle("hidden", !(isMobile && isOpen));
+}
+
 document.getElementById("btn-toggle-sidebar")!.addEventListener("click", () => {
   sidebarEl.classList.toggle("collapsed");
+  syncSidebarBackdrop();
   setTimeout(() => {
     if (activeSessionId) {
       const m = mounted.get(activeSessionId);
@@ -965,6 +988,46 @@ document.getElementById("btn-toggle-sidebar")!.addEventListener("click", () => {
     }
   }, 160);
 });
+
+sidebarBackdropEl.addEventListener("click", () => {
+  sidebarEl.classList.add("collapsed");
+  syncSidebarBackdrop();
+});
+
+// Mobile quick-key bar (prevent stealing focus so phone keyboard stays open)
+mobileKeybarEl.addEventListener("mousedown", (e) => e.preventDefault());
+mobileKeybarEl.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".mkey");
+  if (!btn || !activeSessionId) return;
+  const entry = mounted.get(activeSessionId);
+  if (!entry) return;
+  if (btn.dataset.action === "bottom") {
+    entry.term.scrollToBottom();
+    entry.term.focus();
+    return;
+  }
+  const seq = btn.dataset.seq;
+  if (seq && entry.ws?.readyState === WebSocket.OPEN) {
+    entry.ws.send(JSON.stringify({ type: "input", data: seq }));
+  }
+  entry.term.focus();
+});
+
+// Adapt height cleanly when iOS/Android on-screen keyboard opens
+if (window.visualViewport) {
+  const syncVisualViewport = () => {
+    if (window.innerWidth <= 720 && window.visualViewport) {
+      appEl.style.height = `${Math.round(window.visualViewport.height)}px`;
+    } else {
+      appEl.style.height = "";
+    }
+    if (activeSessionId) {
+      const m = mounted.get(activeSessionId);
+      if (m) fitAndSync(m);
+    }
+  };
+  window.visualViewport.addEventListener("resize", syncVisualViewport);
+}
 
 async function commitTitleRename() {
   if (!activeSessionId) return;
@@ -1119,8 +1182,99 @@ function adjustTerminalFontSize(delta: number) {
   setTerminalFontSize(delta === 0 ? DEFAULT_FONT_SIZE : termFontSize + delta);
 }
 
+interface RemoteConfigResponse {
+  remoteAccess: boolean;
+  remotePort: number;
+  authToken: string;
+  activeHost: string;
+  activePort: number;
+  activeRemote: boolean;
+  needsRestart: boolean;
+  urls: Array<{ iface: string; address: string; kind: "vpn" | "lan"; url: string }>;
+}
+
+function renderRemoteConfig(cfg: RemoteConfigResponse) {
+  chkRemoteAccessEl.checked = cfg.remoteAccess;
+  inputRemotePortEl.value = String(cfg.remotePort);
+  remoteSubsettingsEl.classList.toggle("disabled", !cfg.remoteAccess);
+  remoteStatusBadgeEl.textContent = cfg.activeRemote ? `Listening :${cfg.activePort}` : "Local only";
+  remoteStatusBadgeEl.classList.toggle("active", cfg.activeRemote);
+  remoteRestartNoteEl.classList.toggle("hidden", !cfg.needsRestart);
+
+  remoteUrlsListEl.innerHTML = "";
+  if (!cfg.remoteAccess) return;
+
+  if (cfg.urls.length === 0) {
+    remoteUrlsListEl.innerHTML = `<div class="muted" style="font-size:11.5px;">No VPN or LAN interfaces detected.</div>`;
+    return;
+  }
+
+  for (const item of cfg.urls) {
+    const row = document.createElement("div");
+    row.className = "remote-url-row";
+    row.innerHTML = `
+      <span class="remote-url-kind ${item.kind}">${item.kind === "vpn" ? "VPN" : "LAN"}</span>
+      <span class="remote-url-text" title="${escapeAttr(item.url)}">${escapeHtml(item.url)}</span>
+      <button type="button" class="remote-copy-btn">Copy</button>
+    `;
+    const copyBtn = row.querySelector<HTMLButtonElement>(".remote-copy-btn")!;
+    copyBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(item.url);
+        copyBtn.textContent = "Copied!";
+        setTimeout(() => {
+          copyBtn.textContent = "Copy";
+        }, 1400);
+      } catch {
+        // ignore clipboard failure
+      }
+    });
+    remoteUrlsListEl.appendChild(row);
+  }
+}
+
+async function fetchRemoteConfig() {
+  try {
+    const res = await fetch("/api/remote-config");
+    if (!res.ok) return;
+    renderRemoteConfig((await res.json()) as RemoteConfigResponse);
+  } catch {
+    // ignore
+  }
+}
+
+async function patchRemoteConfig(body: { remoteAccess?: boolean; remotePort?: number; regenerateToken?: boolean }) {
+  try {
+    const res = await fetch("/api/remote-config", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return;
+    renderRemoteConfig((await res.json()) as RemoteConfigResponse);
+  } catch {
+    // ignore
+  }
+}
+
+chkRemoteAccessEl.addEventListener("change", () => {
+  void patchRemoteConfig({ remoteAccess: chkRemoteAccessEl.checked });
+});
+
+inputRemotePortEl.addEventListener("change", () => {
+  const port = Number(inputRemotePortEl.value);
+  if (Number.isInteger(port) && port >= 1024 && port <= 65535) {
+    void patchRemoteConfig({ remotePort: port });
+  }
+});
+
+btnRotateTokenEl.addEventListener("click", () => {
+  void patchRemoteConfig({ regenerateToken: true });
+});
+
 function openSettingsModal() {
   applyAppearance();
+  void fetchRemoteConfig();
   settingsBackdropEl.classList.remove("hidden");
 }
 
@@ -1291,8 +1445,13 @@ sidebarResizerEl.addEventListener("mousedown", (e) => {
 });
 
 window.addEventListener("focus", () => {
-  if (activeSessionId && unreadSessionIds.delete(activeSessionId)) {
-    updateDocumentTitle();
+  if (activeSessionId) {
+    if (unreadSessionIds.delete(activeSessionId)) {
+      updateDocumentTitle();
+    }
+    // Re-sync PTY size on desktop focus in case a phone client resized it
+    const m = mounted.get(activeSessionId);
+    if (m) requestAnimationFrame(() => fitAndSync(m));
   }
 });
 
@@ -1365,6 +1524,9 @@ btnNotifyToggleEl.addEventListener("click", () => {
 async function boot() {
   if (window.termdeckDesktop?.isMac) {
     document.body.classList.add("desktop-mac");
+  }
+  if (window.innerWidth <= 720) {
+    sidebarEl.classList.add("collapsed");
   }
   applyAppearance();
   syncNotifyBtn();

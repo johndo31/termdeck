@@ -8,14 +8,20 @@ import {
   detectLocalBinaries,
   discoverLocalProjects,
   discoverSshHosts,
+  generateAuthToken,
+  listNetworkAddresses,
+  loadConfig,
   loadSessions,
   readLocalGitBranch,
+  saveConfig,
   saveSessions,
 } from "./store";
 import type { AgentKind, SessionRecord, SessionView } from "./types";
 
-const PORT = process.env.PORT !== undefined ? Number(process.env.PORT) : 3434;
-const HOST = process.env.HOST || "127.0.0.1";
+let config = loadConfig();
+const PORT = process.env.PORT !== undefined ? Number(process.env.PORT) : (config.remoteAccess ? config.remotePort : 3434);
+const HOST = process.env.HOST || (config.remoteAccess ? "0.0.0.0" : "127.0.0.1");
+const ACTIVE_AUTH_TOKEN = (process.env.TERMDECK_AUTH_TOKEN || (HOST !== "127.0.0.1" ? config.authToken : "")).trim();
 const PUBLIC_DIR = join(import.meta.dir, "..", "public");
 
 let sessions: SessionRecord[] = loadSessions();
@@ -59,11 +65,76 @@ function serveStatic(pathname: string): Response {
   });
 }
 
+function parseCookies(cookieHeader: string | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!cookieHeader) return out;
+  for (const part of cookieHeader.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    const k = part.slice(0, eq).trim();
+    const v = part.slice(eq + 1).trim();
+    if (k) out[k] = decodeURIComponent(v);
+  }
+  return out;
+}
+
+function isLoopbackIp(address: string | undefined): boolean {
+  if (!address) return false;
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
+function isAuthorizedRequest(req: Request, clientIp: string | undefined): boolean {
+  if (!ACTIVE_AUTH_TOKEN) return true;
+  if (isLoopbackIp(clientIp)) return true;
+  const authHeader = req.headers.get("authorization") || "";
+  if (authHeader === `Bearer ${ACTIVE_AUTH_TOKEN}`) return true;
+  const cookies = parseCookies(req.headers.get("cookie"));
+  if (cookies.termdeck_auth === ACTIVE_AUTH_TOKEN) return true;
+  const url = new URL(req.url);
+  if (url.searchParams.get("token") === ACTIVE_AUTH_TOKEN) return true;
+  return false;
+}
+
+function renderLoginPage(hasError = false): Response {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>termdeck — Remote Access</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100dvh; background: #0b0d11; color: #f0f4fa; font-family: "SF Mono", Menlo, monospace; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  form { width: min(360px, 100%); background: #12161d; border: 1px solid #2d3546; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  h1 { margin: 0; font-size: 15px; }
+  p { margin: 0; font-size: 12px; color: #95a2b8; line-height: 1.5; }
+  input { height: 38px; padding: 0 11px; border-radius: 7px; border: 1px solid #2d3546; background: #0b0d11; color: #f0f4fa; font-family: inherit; font-size: 13px; }
+  button { height: 38px; border-radius: 7px; border: none; background: #6c8cff; color: #090b10; font-family: inherit; font-weight: 600; font-size: 13px; cursor: pointer; }
+  .err { color: #f87171; font-size: 12px; }
+</style>
+</head>
+<body>
+  <form method="GET" action="/">
+    <h1>termdeck remote access</h1>
+    <p>Enter the access token shown in termdeck Settings on your Mac, or open the full link directly.</p>
+    ${hasError ? '<div class="err">Invalid token. Check Settings → Remote Access on your Mac.</div>' : ""}
+    <input name="token" type="password" placeholder="Access token" autocomplete="off" autofocus required />
+    <button type="submit">Connect</button>
+  </form>
+</body>
+</html>`;
+  return new Response(html, { status: 401, headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
 function isAllowedOrigin(req: Request, actualPort: number): boolean {
   const origin = req.headers.get("origin");
   if (!origin) return true;
   try {
     const parsed = new URL(origin);
+    const reqHost = req.headers.get("host");
+    if (reqHost && parsed.host.toLowerCase() === reqHost.toLowerCase()) {
+      return true;
+    }
     const allowedHosts = new Set(["127.0.0.1", "localhost", HOST]);
     const effectivePort = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
     return allowedHosts.has(parsed.hostname) && effectivePort === String(actualPort);
@@ -72,12 +143,62 @@ function isAllowedOrigin(req: Request, actualPort: number): boolean {
   }
 }
 
+function buildRemoteConfigPayload(actualPort: number) {
+  const addresses = listNetworkAddresses();
+  const effectivePort = config.remoteAccess ? config.remotePort : actualPort;
+  const tokenQuery = config.authToken ? `/?token=${encodeURIComponent(config.authToken)}` : "/";
+  const activeRemote = HOST !== "127.0.0.1";
+  const needsRestart =
+    config.remoteAccess !== activeRemote ||
+    (config.remoteAccess && (actualPort !== config.remotePort || ACTIVE_AUTH_TOKEN !== config.authToken));
+
+  return {
+    remoteAccess: config.remoteAccess,
+    remotePort: config.remotePort,
+    authToken: config.authToken,
+    activeHost: HOST,
+    activePort: actualPort,
+    activeRemote,
+    needsRestart,
+    urls: addresses.map((a) => ({
+      iface: a.iface,
+      address: a.address,
+      kind: a.kind,
+      url: `http://${a.address}:${effectivePort}${tokenQuery}`,
+    })),
+  };
+}
+
 const server = Bun.serve<WsData>({
   hostname: HOST,
   port: PORT,
   async fetch(req, srv) {
     const url = new URL(req.url);
     const { pathname } = url;
+    const clientIp = srv.requestIP(req)?.address;
+
+    // Magic-link token login -> set HttpOnly cookie and strip token from URL
+    if (ACTIVE_AUTH_TOKEN && pathname === "/" && url.searchParams.has("token")) {
+      const provided = url.searchParams.get("token") || "";
+      if (provided === ACTIVE_AUTH_TOKEN) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: "/",
+            "set-cookie": `termdeck_auth=${encodeURIComponent(ACTIVE_AUTH_TOKEN)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
+          },
+        });
+      }
+      return renderLoginPage(true);
+    }
+
+    // Require auth for non-loopback requests when remote token is active
+    if (!isAuthorizedRequest(req, clientIp)) {
+      if (pathname === "/" || pathname === "/index.html") {
+        return renderLoginPage(false);
+      }
+      return new Response("Unauthorized", { status: 401 });
+    }
 
     // Reject cross-origin WebSocket upgrades and mutating API calls (prevents CSWSH)
     if (
@@ -112,6 +233,37 @@ const server = Bun.serve<WsData>({
         binaries: detectLocalBinaries(),
         localTmux: ptyManager.localTmuxAvailable,
       });
+    }
+
+    if (pathname === "/api/remote-config") {
+      if (req.method === "GET") {
+        return json(buildRemoteConfigPayload(srv.port));
+      }
+      if (req.method === "PATCH") {
+        // Only allow changing remote access config from localhost
+        if (!isLoopbackIp(clientIp)) {
+          return json({ error: "Remote config can only be changed locally" }, 403);
+        }
+        const body = (await req.json()) as {
+          remoteAccess?: boolean;
+          remotePort?: number;
+          regenerateToken?: boolean;
+        };
+        if (typeof body.remoteAccess === "boolean") {
+          config.remoteAccess = body.remoteAccess;
+        }
+        if (body.remotePort !== undefined) {
+          const p = Number(body.remotePort);
+          if (Number.isInteger(p) && p >= 1024 && p <= 65535) {
+            config.remotePort = p;
+          }
+        }
+        if (body.regenerateToken || (config.remoteAccess && !config.authToken)) {
+          config.authToken = generateAuthToken();
+        }
+        saveConfig(config);
+        return json(buildRemoteConfigPayload(srv.port));
+      }
     }
 
     if (pathname === "/api/discover" && req.method === "GET") {

@@ -53,7 +53,9 @@ body {
 .app {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
+  overflow: hidden;
 }
 
 /* Sidebar */
@@ -1310,6 +1312,211 @@ body.desktop-mac .term-header input {
 .switch-input:checked::after {
   transform: translateX(15px);
   background: #ffffff;
+}
+
+.remote-status-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+}
+
+.remote-status-badge.active {
+  background: rgba(52, 211, 153, 0.14);
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+
+.remote-port-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.remote-port-label {
+  font-size: 0.86em;
+  color: var(--text-muted);
+}
+
+.remote-port-input {
+  width: 88px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-header);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.remote-port-input:focus {
+  border-color: var(--accent);
+}
+
+.remote-urls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.remote-url-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-header);
+  border: 1px solid var(--border);
+}
+
+.remote-url-kind {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(108, 140, 255, 0.14);
+  color: #a5b8ff;
+  flex-shrink: 0;
+}
+
+.remote-url-kind.vpn {
+  background: rgba(52, 211, 153, 0.15);
+  color: #6ee7b7;
+}
+
+.remote-url-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remote-copy-btn {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.remote-copy-btn:hover {
+  background: var(--bg-hover);
+}
+
+.remote-restart-note {
+  font-size: 11.5px;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  padding: 7px 9px;
+  line-height: 1.4;
+}
+
+/* Mobile drawer backdrop & touch quick-key bar */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 7, 10, 0.62);
+  z-index: 45;
+}
+
+.mobile-keybar {
+  display: none;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-header);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mkey {
+  height: 32px;
+  min-width: 38px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mkey:active {
+  background: var(--bg-active);
+}
+
+.mkey-primary {
+  border-color: rgba(108, 140, 255, 0.45);
+  background: rgba(108, 140, 255, 0.16);
+  color: #c7d5ff;
+}
+
+.mkey-danger {
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+
+@media (max-width: 720px), (pointer: coarse) {
+  .mobile-keybar {
+    display: flex;
+  }
+}
+
+@media (max-width: 720px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    width: min(290px, 82vw);
+    min-width: min(290px, 82vw);
+    box-shadow: 16px 0 40px rgba(0, 0, 0, 0.55);
+  }
+
+  .sidebar.collapsed {
+    transform: translateX(-100%);
+    width: min(290px, 82vw);
+    min-width: min(290px, 82vw);
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  .sidebar-resizer {
+    display: none;
+  }
+
+  .pill-project,
+  .pill-status {
+    display: none;
+  }
+
+  .header-btn span {
+    display: none;
+  }
+
+  .term-pane {
+    inset: 4px 6px 4px 6px;
+  }
 }
 
 /* Compact layout for smaller MacBook screens (13"/14") */

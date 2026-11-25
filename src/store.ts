@@ -1,10 +1,78 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { basename, join, resolve } from "node:path";
 import type { AgentKind, SessionRecord } from "./types";
 
 export const TERMDECK_DIR = join(homedir(), ".termdeck");
 const SESSIONS_FILE = join(TERMDECK_DIR, "sessions.json");
+const CONFIG_FILE = join(TERMDECK_DIR, "config.json");
+
+export interface TermdeckConfig {
+  remoteAccess: boolean;
+  remotePort: number;
+  authToken: string;
+}
+
+export function generateAuthToken(): string {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function loadConfig(): TermdeckConfig {
+  ensureDir();
+  const defaults: TermdeckConfig = {
+    remoteAccess: false,
+    remotePort: 3434,
+    authToken: "",
+  };
+  if (!existsSync(CONFIG_FILE)) return defaults;
+  try {
+    const parsed = JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as Partial<TermdeckConfig>;
+    const port = Number(parsed.remotePort);
+    return {
+      remoteAccess: Boolean(parsed.remoteAccess),
+      remotePort: Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : 3434,
+      authToken: typeof parsed.authToken === "string" ? parsed.authToken : "",
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+export function saveConfig(config: TermdeckConfig): void {
+  ensureDir();
+  const tmp = `${CONFIG_FILE}.tmp`;
+  writeFileSync(tmp, JSON.stringify(config, null, 2), "utf8");
+  renameSync(tmp, CONFIG_FILE);
+}
+
+export interface NetworkAddressInfo {
+  iface: string;
+  address: string;
+  kind: "vpn" | "lan";
+}
+
+export function listNetworkAddresses(): NetworkAddressInfo[] {
+  const ifaces = networkInterfaces();
+  const results: NetworkAddressInfo[] = [];
+  const seen = new Set<string>();
+
+  for (const [name, list] of Object.entries(ifaces)) {
+    if (!list) continue;
+    for (const info of list) {
+      if (info.family !== "IPv4" || info.internal) continue;
+      if (seen.has(info.address)) continue;
+      seen.add(info.address);
+      const isVpn =
+        /^(utun|tun|tap|wg|tailscale|zt|ppp)/i.test(name) ||
+        /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(info.address);
+      results.push({ iface: name, address: info.address, kind: isVpn ? "vpn" : "lan" });
+    }
+  }
+
+  return results.sort((a, b) => (a.kind === b.kind ? a.iface.localeCompare(b.iface) : a.kind === "vpn" ? -1 : 1));
+}
 
 function ensureDir() {
   if (!existsSync(TERMDECK_DIR)) {
