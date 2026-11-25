@@ -1154,9 +1154,10 @@ function syncNotifyBtn() {
   const granted = desktopReady || ("Notification" in window && Notification.permission === "granted");
   const active = notifyEnabled && granted;
   btnNotifyToggleEl.classList.toggle("enabled", active);
-  btnNotifyToggleEl.title = active
-    ? "Desktop notifications enabled for decisions (click to disable)"
-    : "Enable desktop notifications when a session needs a decision";
+  btnNotifyToggleEl.setAttribute(
+    "data-tooltip",
+    active ? "Notifications: On (click to mute)" : "Notifications: Off (click to enable)"
+  );
 }
 
 btnNotifyToggleEl.addEventListener("click", async () => {

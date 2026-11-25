@@ -416,12 +416,13 @@ body {
 }
 
 .notify-btn {
-  width: 24px;
-  height: 24px;
+  position: relative;
+  width: 26px;
+  height: 26px;
   border-radius: 5px;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-dim);
+  color: var(--text-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -437,6 +438,34 @@ body {
   color: var(--amber);
   background: rgba(245, 158, 11, 0.12);
   border-color: rgba(245, 158, 11, 0.28);
+}
+
+.notify-btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  right: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #1b2130;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 40;
+}
+
+.notify-btn[data-tooltip]:hover::after,
+.notify-btn[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @keyframes pulse {
