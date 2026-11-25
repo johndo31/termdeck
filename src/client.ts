@@ -143,6 +143,9 @@ const btnNotifyToggleEl = document.getElementById("btn-notify-toggle")!;
 const btnSettingsEl = document.getElementById("btn-settings")!;
 const sidebarResizerEl = document.getElementById("sidebar-resizer")!;
 const settingsBackdropEl = document.getElementById("settings-backdrop")!;
+const deleteBackdropEl = document.getElementById("delete-backdrop")!;
+const deleteModalMessageEl = document.getElementById("delete-modal-message")!;
+const btnDeleteConfirmEl = document.getElementById("btn-delete-confirm") as HTMLButtonElement;
 const rangeUiSizeEl = document.getElementById("range-ui-size") as HTMLInputElement;
 const valUiSizeEl = document.getElementById("val-ui-size")!;
 const rangeTermSizeEl = document.getElementById("range-term-size") as HTMLInputElement;
@@ -1014,9 +1017,27 @@ document.getElementById("btn-resume")!.addEventListener("click", async () => {
   mounted.get(activeSessionId)?.term.focus();
 });
 
-document.getElementById("btn-delete")!.addEventListener("click", async () => {
-  if (!activeSessionId) return;
-  const id = activeSessionId;
+let pendingDeleteId: string | null = null;
+
+function openDeleteModal(sessionId: string) {
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) return;
+  pendingDeleteId = sessionId;
+  deleteModalMessageEl.textContent = `Remove "${s.title}" (${s.project})?`;
+  deleteBackdropEl.classList.remove("hidden");
+  btnDeleteConfirmEl.focus();
+}
+
+function closeDeleteModal() {
+  pendingDeleteId = null;
+  deleteBackdropEl.classList.add("hidden");
+  if (activeSessionId) {
+    mounted.get(activeSessionId)?.term.focus();
+  }
+}
+
+async function performDeleteSession(id: string) {
+  unreadSessionIds.delete(id);
   disposeTerminal(id);
   await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
   sessions = sessions.filter((s) => s.id !== id);
@@ -1028,6 +1049,24 @@ document.getElementById("btn-delete")!.addEventListener("click", async () => {
     renderSidebar();
     renderHeader();
     emptyStateEl.classList.remove("hidden");
+  }
+}
+
+document.getElementById("btn-delete")!.addEventListener("click", () => {
+  if (!activeSessionId) return;
+  openDeleteModal(activeSessionId);
+});
+
+document.getElementById("btn-delete-close")!.addEventListener("click", closeDeleteModal);
+document.getElementById("btn-delete-cancel")!.addEventListener("click", closeDeleteModal);
+deleteBackdropEl.addEventListener("click", (e) => {
+  if (e.target === deleteBackdropEl) closeDeleteModal();
+});
+btnDeleteConfirmEl.addEventListener("click", async () => {
+  const id = pendingDeleteId;
+  closeDeleteModal();
+  if (id) {
+    await performDeleteSession(id);
   }
 });
 
@@ -1285,7 +1324,9 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     adjustTerminalFontSize(0);
   } else if (e.key === "Escape") {
-    if (!settingsBackdropEl.classList.contains("hidden")) {
+    if (!deleteBackdropEl.classList.contains("hidden")) {
+      closeDeleteModal();
+    } else if (!settingsBackdropEl.classList.contains("hidden")) {
       closeSettingsModal();
     } else if (!modalBackdropEl.classList.contains("hidden")) {
       closeModal();

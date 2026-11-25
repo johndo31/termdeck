@@ -316,6 +316,23 @@
       </div>
     </div>
 
+    <div id="delete-backdrop" class="modal-backdrop hidden">
+      <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+        <div class="modal-header">
+          <h2 id="delete-modal-title">Delete Session</h2>
+          <button id="btn-delete-close" class="icon-btn" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="delete-modal-message" class="confirm-message"></p>
+          <p class="confirm-sub">Closes the terminal and removes it from the sidebar. Your CLI chat history on disk is not deleted.</p>
+          <div class="modal-footer">
+            <button type="button" id="btn-delete-cancel" class="header-btn">Cancel</button>
+            <button type="button" id="btn-delete-confirm" class="btn-danger">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="/client.js"></script>
   </body>
 </html>
