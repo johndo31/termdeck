@@ -23,15 +23,17 @@ function stripAnsi(input: string): string {
     .replace(/\r/g, "");
 }
 
-// Multi-line TUI approval / picker dialogs (can sit 2-6 lines above the bottom border)
+// Multi-line TUI approval / picker dialogs (can sit 2-8 lines above the bottom border)
 const TUI_DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
+  { re: /requesting permission/i, detail: "Permission required" },
+  { re: /run this command\?/i, detail: "Approve command" },
   { re: /do you want to (?:proceed|continue|run|execute|make this edit|create|delete|overwrite|allow)/i, detail: "Needs approval" },
   { re: /allow (?:once|always|for this session|this action|tool|command)/i, detail: "Needs approval" },
-  { re: /yes,\s*(?:allow|proceed|continue|don't ask again)/i, detail: "Needs approval" },
+  { re: /yes,\s*(?:run|allow|proceed|continue|approve|don't ask again)/i, detail: "Needs approval" },
   { re: /permission (?:required|needed|request)/i, detail: "Permission required" },
   { re: /approve(?:\/| or )reject|approve this/i, detail: "Needs approval" },
   { re: /trust (?:this|the) (?:folder|directory|workspace|project)/i, detail: "Trust prompt" },
-  { re: /(?:enter|↑\/↓|arrow keys) to (?:select|choose|confirm)/i, detail: "Needs decision" },
+  { re: /(?:enter|↑\/↓|arrow keys) to (?:select|choose|confirm)|↑\/↓\s*navigate/i, detail: "Needs decision" },
   { re: /select an option|choose an option|which option|pick one/i, detail: "Needs decision" },
   { re: /waiting for (?:your )?(?:input|approval|decision|confirmation)/i, detail: "Waiting for input" },
 ];
@@ -218,7 +220,7 @@ export class SessionStatusDetector {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
       if (this.status === "working") {
-        const recent = this.getRecentLines(6);
+        const recent = this.getRecentLines(8);
         const bottom = this.getRecentLines(3);
         const isIdlePrompt = IDLE_FOOTER_RE.test(bottom) || IDLE_PROMPT_RE.test(bottom);
         const decision = isIdlePrompt ? null : this.detectDecision(recent, this.getRecentLines(2));
@@ -233,7 +235,7 @@ export class SessionStatusDetector {
 
   private inspectSettledTail(hadBell: boolean) {
     if (this.status === "exited") return;
-    const recent = this.getRecentLines(6);
+    const recent = this.getRecentLines(8);
     const bottom = this.getRecentLines(3);
 
     // If the CLI clearly returned to its normal idle input footer or shell prompt, settle to idle first
