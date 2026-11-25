@@ -252,7 +252,7 @@ ipcMain.on("termdeck:notify", (_event, payload) => {
     n.show();
   }
 
-  if (process.platform === "darwin" && app.dock && (!mainWindow || !mainWindow.isFocused())) {
+  if (payload.bounce !== false && process.platform === "darwin" && app.dock && (!mainWindow || !mainWindow.isFocused())) {
     app.dock.bounce("informational");
   }
 });

@@ -11,7 +11,7 @@ declare global {
       setBadge: (count: number) => void;
       pickFolder: (defaultPath?: string) => Promise<string | null>;
       openExternal?: (url: string) => void;
-      notify?: (payload: { sessionId: string; title: string; body: string }) => void;
+      notify?: (payload: { sessionId: string; title: string; body: string; bounce?: boolean }) => void;
       onSelectSession?: (cb: (sessionId: string) => void) => void;
       onFontZoom?: (cb: (delta: number) => void) => void;
     };
@@ -83,6 +83,8 @@ function agentIconSvg(agent: AgentKind, size = 15): string {
 const STORAGE_ACTIVE_KEY = "termdeck:activeSessionId";
 const STORAGE_NOTIFY_KEY = "termdeck:notifyEnabled";
 const STORAGE_NOTIFY_UNFOCUSED_KEY = "termdeck:notifyOnlyUnfocused";
+const STORAGE_DOCK_BADGE_KEY = "termdeck:dockBadge";
+const STORAGE_DOCK_BOUNCE_KEY = "termdeck:dockBounce";
 const STORAGE_NOTIFY_DECISION_KEY = "termdeck:notifyOnDecision";
 const STORAGE_NOTIFY_COMPLETE_KEY = "termdeck:notifyOnComplete";
 const STORAGE_NOTIFY_EXIT_KEY = "termdeck:notifyOnExit";
@@ -107,6 +109,8 @@ let sessions: SessionView[] = [];
 let activeSessionId: string | null = localStorage.getItem(STORAGE_ACTIVE_KEY);
 let notifyEnabled = localStorage.getItem(STORAGE_NOTIFY_KEY) === "1";
 let notifyOnlyUnfocused = localStorage.getItem(STORAGE_NOTIFY_UNFOCUSED_KEY) !== "0";
+let dockBadgeEnabled = localStorage.getItem(STORAGE_DOCK_BADGE_KEY) !== "0";
+let dockBounceEnabled = localStorage.getItem(STORAGE_DOCK_BOUNCE_KEY) !== "0";
 let notifyOnDecision = localStorage.getItem(STORAGE_NOTIFY_DECISION_KEY) !== "0";
 let notifyOnComplete = localStorage.getItem(STORAGE_NOTIFY_COMPLETE_KEY) === "1";
 let notifyOnExit = localStorage.getItem(STORAGE_NOTIFY_EXIT_KEY) === "1";
@@ -147,6 +151,8 @@ const valSidebarWidthEl = document.getElementById("val-sidebar-width")!;
 const notifySubsettingsEl = document.getElementById("notify-subsettings")!;
 const chkNotifyEnabledEl = document.getElementById("chk-notify-enabled") as HTMLInputElement;
 const chkNotifyUnfocusedEl = document.getElementById("chk-notify-unfocused") as HTMLInputElement;
+const chkDockBadgeEl = document.getElementById("chk-dock-badge") as HTMLInputElement;
+const chkDockBounceEl = document.getElementById("chk-dock-bounce") as HTMLInputElement;
 const chkNotifyDecisionEl = document.getElementById("chk-notify-decision") as HTMLInputElement;
 const chkNotifyCompleteEl = document.getElementById("chk-notify-complete") as HTMLInputElement;
 const chkNotifyExitEl = document.getElementById("chk-notify-exit") as HTMLInputElement;
@@ -295,7 +301,7 @@ function updateDocumentTitle() {
   const prefix = decisionCount > 0 ? `(${decisionCount}!) ` : workingCount > 0 ? "● " : "";
   const s = sessions.find((x) => x.id === activeSessionId);
   document.title = s ? `${prefix}${s.title} · ${s.project} — termdeck` : `${prefix}termdeck`;
-  window.termdeckDesktop?.setBadge(decisionCount);
+  window.termdeckDesktop?.setBadge(dockBadgeEnabled ? decisionCount : 0);
 }
 
 function renderSidebar() {
@@ -623,7 +629,7 @@ function maybeNotifyDecision(session: SessionView, detail?: string) {
   const body = detail || "Waiting for your decision";
 
   if (window.termdeckDesktop?.notify) {
-    window.termdeckDesktop.notify({ sessionId: session.id, title, body });
+    window.termdeckDesktop.notify({ sessionId: session.id, title, body, bounce: dockBounceEnabled });
     return;
   }
 
@@ -1048,6 +1054,8 @@ function applyAppearance() {
   valSidebarWidthEl.textContent = `${sidebarWidth}px`;
   chkNotifyEnabledEl.checked = notifyEnabled;
   chkNotifyUnfocusedEl.checked = notifyOnlyUnfocused;
+  chkDockBadgeEl.checked = dockBadgeEnabled;
+  chkDockBounceEl.checked = dockBounceEnabled;
   chkNotifyDecisionEl.checked = notifyOnDecision;
   chkNotifyCompleteEl.checked = notifyOnComplete;
   chkNotifyExitEl.checked = notifyOnExit;
@@ -1151,6 +1159,17 @@ chkNotifyUnfocusedEl.addEventListener("change", () => {
   localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, notifyOnlyUnfocused ? "1" : "0");
 });
 
+chkDockBadgeEl.addEventListener("change", () => {
+  dockBadgeEnabled = chkDockBadgeEl.checked;
+  localStorage.setItem(STORAGE_DOCK_BADGE_KEY, dockBadgeEnabled ? "1" : "0");
+  updateDocumentTitle();
+});
+
+chkDockBounceEl.addEventListener("change", () => {
+  dockBounceEnabled = chkDockBounceEl.checked;
+  localStorage.setItem(STORAGE_DOCK_BOUNCE_KEY, dockBounceEnabled ? "1" : "0");
+});
+
 chkNotifyDecisionEl.addEventListener("change", () => {
   notifyOnDecision = chkNotifyDecisionEl.checked;
   localStorage.setItem(STORAGE_NOTIFY_DECISION_KEY, notifyOnDecision ? "1" : "0");
@@ -1177,6 +1196,7 @@ document.getElementById("btn-notify-test")!.addEventListener("click", () => {
       sessionId: activeSessionId || "",
       title: "termdeck test notification",
       body: "Notifications are working.",
+      bounce: dockBounceEnabled,
     });
   } else if ("Notification" in window && Notification.permission === "granted") {
     new Notification("termdeck test notification", { body: "Notifications are working." });
@@ -1187,6 +1207,8 @@ document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   uiFontSize = DEFAULT_UI_SIZE;
   sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
   notifyOnlyUnfocused = true;
+  dockBadgeEnabled = true;
+  dockBounceEnabled = true;
   notifyOnDecision = true;
   notifyOnComplete = false;
   notifyOnExit = false;
@@ -1194,12 +1216,15 @@ document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   localStorage.setItem(STORAGE_UI_SIZE_KEY, String(uiFontSize));
   localStorage.setItem(STORAGE_SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, "1");
+  localStorage.setItem(STORAGE_DOCK_BADGE_KEY, "1");
+  localStorage.setItem(STORAGE_DOCK_BOUNCE_KEY, "1");
   localStorage.setItem(STORAGE_NOTIFY_DECISION_KEY, "1");
   localStorage.setItem(STORAGE_NOTIFY_COMPLETE_KEY, "0");
   localStorage.setItem(STORAGE_NOTIFY_EXIT_KEY, "0");
   localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, "1");
   setTerminalFontSize(DEFAULT_FONT_SIZE);
   applyAppearance();
+  updateDocumentTitle();
 });
 
 // Drag-to-resize sidebar handle
