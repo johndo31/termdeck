@@ -1156,7 +1156,7 @@ function syncNotifyBtn() {
   btnNotifyToggleEl.classList.toggle("enabled", active);
   btnNotifyToggleEl.setAttribute(
     "data-tooltip",
-    active ? "Notifications: On (click to mute)" : "Notifications: Off (click to enable)"
+    active ? "Notifications: On" : "Notifications: Off"
   );
 }
 
