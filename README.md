@@ -2,6 +2,8 @@
 
 A minimal, zero-injection web UI for your local and remote coding agent terminals (`xterm.js` + session sidebar + persistent resume).
 
+![termdeck preview](docs/preview.png)
+
 ## Features
 
 - **Zero prompt/tool injection** — runs real `claude`, `agy` (Antigravity), `codex`, `gemini`, or plain `$SHELL` inside a real PTY.
