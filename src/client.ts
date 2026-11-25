@@ -1014,16 +1014,6 @@ document.getElementById("btn-resume")!.addEventListener("click", async () => {
   mounted.get(activeSessionId)?.term.focus();
 });
 
-document.getElementById("btn-fresh")!.addEventListener("click", async () => {
-  if (!activeSessionId) return;
-  await fetch(`/api/sessions/${encodeURIComponent(activeSessionId)}/resume`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ fresh: true }),
-  });
-  mounted.get(activeSessionId)?.term.focus();
-});
-
 document.getElementById("btn-delete")!.addEventListener("click", async () => {
   if (!activeSessionId) return;
   const id = activeSessionId;
