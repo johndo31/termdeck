@@ -31,7 +31,7 @@ const DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: /permission (?:required|needed|request)/i, detail: "Permission required" },
   { re: /approve(?:\/| or )reject|approve this/i, detail: "Needs approval" },
   { re: /trust (?:this|the) (?:folder|directory|workspace|project)/i, detail: "Trust prompt" },
-  { re: /(?:enter|↑\/↓|arrow keys) to (?:select|choose|confirm)|esc to cancel/i, detail: "Needs decision" },
+  { re: /(?:enter|↑\/↓|arrow keys) to (?:select|choose|confirm)/i, detail: "Needs decision" },
   { re: /select an option|choose an option|which option|pick one/i, detail: "Needs decision" },
   { re: /waiting for (?:your )?(?:input|approval|decision|confirmation)/i, detail: "Waiting for input" },
   { re: /press enter to continue|hit enter to continue/i, detail: "Press Enter" },
@@ -47,8 +47,9 @@ const WORKING_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: /\b(?:reading|searching|editing|writing|running|executing|building|testing)\b/i, detail: "Running tool…" },
 ];
 
-// Explicit idle prompt hints at the end of output
+// Explicit idle prompt hints at the end of output (shell prompts & agent input bars)
 const IDLE_PROMPT_RE = /(?:^|\n)\s*(?:❯|>|\$|%|›)\s*$/;
+const IDLE_FOOTER_RE = /\?\s+for shortcuts|shift\+tab to cycle|type your message|ask anything/i;
 
 export class SessionStatusDetector {
   private agent: AgentKind;
@@ -107,11 +108,16 @@ export class SessionStatusDetector {
       return;
     }
     this.lastInputAt = Date.now();
+    const submitted = data.includes("\r") || data.includes("\n");
+    if (submitted) {
+      // Clear previous turn's tail so old output can't false-trigger on the next turn
+      this.cleanTail = "";
+    }
     // Submitting a key/Enter clears any pending decision banner immediately
     if (this.status === "needs_input") {
       this.clearTimers();
-      const submitted = data.includes("\r") || data.includes("\n") || data === "y" || data === "n" || data === "1" || data === "2";
-      this.setState(submitted && this.agent !== "shell" ? "working" : "idle", submitted && this.agent !== "shell" ? "Working…" : undefined);
+      const confirmed = submitted || data === "y" || data === "n" || data === "1" || data === "2";
+      this.setState(confirmed && this.agent !== "shell" ? "working" : "idle", confirmed && this.agent !== "shell" ? "Working…" : undefined);
     }
   }
 
@@ -147,7 +153,10 @@ export class SessionStatusDetector {
     const withoutOsc = rawChunk.replace(OSC_REGEX, "");
     const standaloneBell = withoutOsc.includes("\x07");
 
-    // 2. Append ANSI-stripped text to rolling tail
+    // 2. Append ANSI-stripped text to rolling tail (reset on full-screen clear)
+    if (rawChunk.includes("\x1b[2J") || rawChunk.includes("\x1b[3J")) {
+      this.cleanTail = "";
+    }
     const clean = stripAnsi(rawChunk);
     if (clean) {
       this.cleanTail = (this.cleanTail + clean).slice(-MAX_TAIL_CHARS);
@@ -205,7 +214,9 @@ export class SessionStatusDetector {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
       if (this.status === "working") {
-        const decision = this.detectDecision(this.getRecentLines(18));
+        const recent = this.getRecentLines(8);
+        const bottom = this.getRecentLines(3);
+        const decision = IDLE_FOOTER_RE.test(bottom) ? null : this.detectDecision(recent);
         if (decision) {
           this.setState("needs_input", decision, true);
         } else {
@@ -217,7 +228,15 @@ export class SessionStatusDetector {
 
   private inspectSettledTail(hadBell: boolean) {
     if (this.status === "exited") return;
-    const recent = this.getRecentLines(18);
+    const recent = this.getRecentLines(8);
+    const bottom = this.getRecentLines(3);
+
+    // If the CLI clearly returned to its normal idle input footer/prompt, settle to idle
+    if (IDLE_FOOTER_RE.test(bottom) && !this.detectWorkingHint(recent, false)) {
+      this.clearTimers();
+      this.setState("idle", "Ready");
+      return;
+    }
 
     const decision = this.detectDecision(recent);
     if (decision) {
