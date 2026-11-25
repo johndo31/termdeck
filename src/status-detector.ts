@@ -63,6 +63,7 @@ export class SessionStatusDetector {
   private lastInputAt = 0;
   private lastRedrawTriggerAt = 0;
   private lastOutputAt = 0;
+  private hasPendingTurn = false;
   private status: SessionStatus = "idle";
   private detail: string | undefined;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -95,9 +96,11 @@ export class SessionStatusDetector {
       this.clearTimers();
       this.setState("needs_input", message || "Needs attention", true);
     } else if (lower === "userpromptsubmit" || lower === "pretooluse" || lower === "working") {
+      this.hasPendingTurn = true;
       this.clearTimers();
       this.setState("working", message || "Working…");
     } else if (lower === "stop" || lower === "idle" || lower === "done") {
+      this.hasPendingTurn = false;
       this.clearTimers();
       this.setState("idle", message || "Ready");
     }
@@ -118,6 +121,7 @@ export class SessionStatusDetector {
     if (submitted) {
       // Clear previous turn's tail so old output can't false-trigger on the next turn
       this.cleanTail = "";
+      this.hasPendingTurn = true;
     }
     // Submitting a key/Enter clears any pending decision banner immediately
     if (this.status === "needs_input") {
@@ -200,11 +204,18 @@ export class SessionStatusDetector {
 
     // 3. Determine immediate state while output is flowing
     const recentLines = this.getRecentLines(14);
+    const bottomLines = this.getRecentLines(3);
     const workingHint = this.detectWorkingHint(recentLines, oscTitleWorking);
 
     if (workingHint) {
+      this.hasPendingTurn = true;
       this.setState("working", workingHint, false);
-    } else if (clean.trim().length > 0 && !IDLE_PROMPT_RE.test(recentLines)) {
+    } else if (
+      this.hasPendingTurn &&
+      clean.trim().length > 0 &&
+      !IDLE_PROMPT_RE.test(recentLines) &&
+      !(this.status === "idle" && IDLE_FOOTER_RE.test(bottomLines))
+    ) {
       this.setState("working", this.agent === "shell" ? "Running…" : "Working…", false);
     } else if (standaloneBell && this.status !== "working") {
       this.onChange(this.state, true);
@@ -227,6 +238,7 @@ export class SessionStatusDetector {
         if (decision) {
           this.setState("needs_input", decision, true);
         } else {
+          this.hasPendingTurn = false;
           this.setState("idle", "Ready");
         }
       }
@@ -240,6 +252,7 @@ export class SessionStatusDetector {
 
     // If the CLI clearly returned to its normal idle input footer or shell prompt, settle to idle first
     if ((IDLE_FOOTER_RE.test(bottom) || IDLE_PROMPT_RE.test(bottom)) && !this.detectWorkingHint(recent, false)) {
+      this.hasPendingTurn = false;
       this.clearTimers();
       this.setState("idle", "Ready");
       return;

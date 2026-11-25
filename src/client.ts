@@ -134,6 +134,7 @@ let discoveredForCwd: DiscoveredSession[] = [];
 let selectedDiscoveredId: string | null = null;
 let discoverTimer: ReturnType<typeof setTimeout> | null = null;
 const unreadSessionIds = new Set<string>();
+const workingSince = new Map<string, number>();
 const mounted = new Map<string, MountedTerminal>();
 
 // DOM refs
@@ -802,12 +803,24 @@ function updateSessionStatus(
   s.statusDetail = statusDetail;
   if (backend) s.backend = backend;
 
+  if (status === "working" && prevStatus !== "working") {
+    workingSince.set(sessionId, Date.now());
+  }
+
   if (notifyOnDecision && status === "needs_input" && prevStatus !== "needs_input") {
+    workingSince.delete(sessionId);
     maybeNotifyDecision(s, statusDetail);
   } else if (notifyOnComplete && status === "idle" && prevStatus === "working" && s.agent !== "shell") {
-    maybeNotifyDecision(s, "Finished turn");
+    const started = workingSince.get(sessionId) ?? 0;
+    workingSince.delete(sessionId);
+    if (started > 0 && Date.now() - started >= 1500) {
+      maybeNotifyDecision(s, "Finished turn");
+    }
   } else if (notifyOnExit && status === "exited" && prevStatus !== "exited") {
+    workingSince.delete(sessionId);
     maybeNotifyDecision(s, statusDetail || "Session exited");
+  } else if (status !== "working") {
+    workingSince.delete(sessionId);
   }
 
   if (!updateSessionRowInPlace(s)) {
