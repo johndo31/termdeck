@@ -499,6 +499,11 @@ function mountTerminal(sessionId: string): MountedTerminal {
   term.loadAddon(fit);
   term.loadAddon(new WebLinksAddon((_event, uri) => openExternalLink(uri)));
   term.open(pane);
+  try {
+    fit.fit();
+  } catch {
+    // ignore if container not yet laid out
+  }
 
   const entry: MountedTerminal = {
     sessionId,
@@ -530,6 +535,7 @@ function connectTerminalWs(entry: MountedTerminal) {
 
   const ws = new WebSocket(wsUrl(`/ws/term/${encodeURIComponent(entry.sessionId)}`));
   entry.ws = ws;
+  let isInitialReplay = true;
 
   ws.addEventListener("open", () => {
     fitAndSync(entry);
@@ -550,7 +556,14 @@ function connectTerminalWs(entry: MountedTerminal) {
           };
 
       if (msg.type === "data") {
-        entry.term.write(msg.data);
+        if (isInitialReplay) {
+          isInitialReplay = false;
+          entry.term.write(msg.data, () => {
+            entry.term.scrollToBottom();
+          });
+        } else {
+          entry.term.write(msg.data);
+        }
       } else if (msg.type === "clear") {
         entry.term.reset();
       } else if (msg.type === "status") {
