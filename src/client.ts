@@ -446,6 +446,7 @@ function mountTerminal(sessionId: string): MountedTerminal {
     fontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", Menlo, Monaco, Consolas, monospace',
     scrollback: 10000,
     linkHandler: {
+      allowNonHttpProtocols: true,
       activate(_event, text) {
         openExternalLink(text);
       },

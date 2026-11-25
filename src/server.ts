@@ -54,7 +54,9 @@ function serveStatic(pathname: string): Response {
   if (rel.includes("..")) return new Response("Forbidden", { status: 403 });
   const filePath = join(PUBLIC_DIR, rel);
   if (!existsSync(filePath)) return new Response("Not Found", { status: 404 });
-  return new Response(Bun.file(filePath));
+  return new Response(Bun.file(filePath), {
+    headers: { "cache-control": "no-store" },
+  });
 }
 
 function isAllowedOrigin(req: Request, actualPort: number): boolean {
