@@ -84,6 +84,7 @@ const plistUpdates: Array<[string, string]> = [
   ["CFBundleIconFile", "termdeck.icns"],
   ["CFBundleShortVersionString", "0.1.0"],
   ["CFBundleVersion", "1"],
+  ["NSUserNotificationAlertStyle", "banner"],
 ];
 for (const [key, value] of plistUpdates) {
   run(["plutil", "-replace", key, "-string", value, plist]);

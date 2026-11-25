@@ -234,6 +234,15 @@ ipcMain.on("termdeck:notify", (_event, payload) => {
 
   if (Notification.isSupported()) {
     const n = new Notification({ title, body, silent: false });
+    n.on("failed", () => {
+      if (process.platform === "darwin") {
+        const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        spawn("osascript", [
+          "-e",
+          `display notification "${esc(body)}" with title "${esc(title)}" sound name "Glass"`,
+        ], { stdio: "ignore" });
+      }
+    });
     n.on("click", () => {
       if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
