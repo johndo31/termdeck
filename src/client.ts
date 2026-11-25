@@ -10,6 +10,7 @@ declare global {
       isMac: boolean;
       setBadge: (count: number) => void;
       pickFolder: (defaultPath?: string) => Promise<string | null>;
+      openExternal?: (url: string) => void;
       onFontZoom?: (cb: (delta: number) => void) => void;
     };
   }
@@ -422,6 +423,16 @@ function selectSession(id: string) {
   });
 }
 
+function openExternalLink(url: string) {
+  const trimmed = url.trim();
+  if (!trimmed) return;
+  if (window.termdeckDesktop?.openExternal) {
+    window.termdeckDesktop.openExternal(trimmed);
+  } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("mailto:")) {
+    window.open(trimmed, "_blank", "noopener,noreferrer");
+  }
+}
+
 function mountTerminal(sessionId: string): MountedTerminal {
   const pane = document.createElement("div");
   pane.className = "term-pane active";
@@ -434,6 +445,11 @@ function mountTerminal(sessionId: string): MountedTerminal {
     lineHeight: 1.28,
     fontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", Menlo, Monaco, Consolas, monospace',
     scrollback: 10000,
+    linkHandler: {
+      activate(_event, text) {
+        openExternalLink(text);
+      },
+    },
     theme: {
       background: "#0b0d11",
       foreground: "#e6ebf4",
@@ -461,7 +477,7 @@ function mountTerminal(sessionId: string): MountedTerminal {
 
   const fit = new FitAddon();
   term.loadAddon(fit);
-  term.loadAddon(new WebLinksAddon());
+  term.loadAddon(new WebLinksAddon((_event, uri) => openExternalLink(uri)));
   term.open(pane);
 
   const entry: MountedTerminal = {

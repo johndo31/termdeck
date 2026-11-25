@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld("termdeckDesktop", {
   pickFolder(defaultPath) {
     return ipcRenderer.invoke("termdeck:pick-folder", defaultPath);
   },
+  openExternal(url) {
+    ipcRenderer.send("termdeck:open-external", String(url || ""));
+  },
   onFontZoom(callback) {
     ipcRenderer.on("termdeck:font-zoom", (_event, delta) => callback(delta));
   },

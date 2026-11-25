@@ -226,6 +226,27 @@ ipcMain.on("termdeck:badge", (_event, count) => {
   }
 });
 
+ipcMain.on("termdeck:open-external", (_event, targetUrl) => {
+  if (typeof targetUrl !== "string") return;
+  const trimmed = targetUrl.trim();
+  if (
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("mailto:")
+  ) {
+    void shell.openExternal(trimmed);
+  } else if (trimmed.startsWith("file://")) {
+    try {
+      const filePath = decodeURIComponent(new URL(trimmed).pathname);
+      if (filePath && existsSync(filePath)) {
+        void shell.openPath(filePath);
+      }
+    } catch {
+      // ignore invalid file URL
+    }
+  }
+});
+
 ipcMain.handle("termdeck:pick-folder", async (_event, defaultPath) => {
   const fallback = existsSync(path.join(homedir(), "Development"))
     ? path.join(homedir(), "Development")
