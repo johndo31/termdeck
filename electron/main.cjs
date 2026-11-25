@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, Notification, screen, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const { existsSync } = require("node:fs");
 const { homedir } = require("node:os");
@@ -223,6 +223,37 @@ function createWindow(url) {
 ipcMain.on("termdeck:badge", (_event, count) => {
   if (process.platform === "darwin" && app.dock) {
     app.dock.setBadge(count > 0 ? String(count) : "");
+  }
+});
+
+ipcMain.on("termdeck:notify", (_event, payload) => {
+  if (!payload || typeof payload !== "object") return;
+  const title = typeof payload.title === "string" && payload.title.trim() ? payload.title.trim() : "termdeck";
+  const body = typeof payload.body === "string" && payload.body.trim() ? payload.body.trim() : "Waiting for your decision";
+  const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
+
+  if (Notification.isSupported()) {
+    const n = new Notification({ title, body, silent: false });
+    n.on("click", () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      } else if (serverUrl) {
+        createWindow(serverUrl);
+      }
+      if (process.platform === "darwin") {
+        app.focus({ steal: true });
+      }
+      if (sessionId && mainWindow) {
+        mainWindow.webContents.send("termdeck:select-session", sessionId);
+      }
+    });
+    n.show();
+  }
+
+  if (process.platform === "darwin" && app.dock && (!mainWindow || !mainWindow.isFocused())) {
+    app.dock.bounce("informational");
   }
 });
 

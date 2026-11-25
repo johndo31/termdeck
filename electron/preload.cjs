@@ -12,6 +12,12 @@ contextBridge.exposeInMainWorld("termdeckDesktop", {
   openExternal(url) {
     ipcRenderer.send("termdeck:open-external", String(url || ""));
   },
+  notify(payload) {
+    ipcRenderer.send("termdeck:notify", payload);
+  },
+  onSelectSession(callback) {
+    ipcRenderer.on("termdeck:select-session", (_event, sessionId) => callback(sessionId));
+  },
   onFontZoom(callback) {
     ipcRenderer.on("termdeck:font-zoom", (_event, delta) => callback(delta));
   },

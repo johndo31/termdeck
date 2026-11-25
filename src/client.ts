@@ -11,6 +11,8 @@ declare global {
       setBadge: (count: number) => void;
       pickFolder: (defaultPath?: string) => Promise<string | null>;
       openExternal?: (url: string) => void;
+      notify?: (payload: { sessionId: string; title: string; body: string }) => void;
+      onSelectSession?: (cb: (sessionId: string) => void) => void;
       onFontZoom?: (cb: (delta: number) => void) => void;
     };
   }
@@ -582,10 +584,20 @@ function fitAndSync(entry: MountedTerminal) {
 }
 
 function maybeNotifyDecision(session: SessionView, detail?: string) {
-  if (!notifyEnabled || !("Notification" in window) || Notification.permission !== "granted") return;
-  if (document.visibilityState === "visible" && session.id === activeSessionId) return;
-  const n = new Notification(`${session.title} (${session.project})`, {
-    body: detail || "Waiting for your decision",
+  if (!notifyEnabled) return;
+  if (document.hasFocus() && document.visibilityState === "visible" && session.id === activeSessionId) return;
+
+  const title = `${session.title} (${session.project})`;
+  const body = detail || "Waiting for your decision";
+
+  if (window.termdeckDesktop?.notify) {
+    window.termdeckDesktop.notify({ sessionId: session.id, title, body });
+    return;
+  }
+
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const n = new Notification(title, {
+    body,
     tag: `termdeck-${session.id}`,
   });
   n.onclick = () => {
@@ -1090,6 +1102,11 @@ sidebarResizerEl.addEventListener("mousedown", (e) => {
 });
 
 window.termdeckDesktop?.onFontZoom?.((delta) => adjustTerminalFontSize(delta));
+window.termdeckDesktop?.onSelectSession?.((sessionId) => {
+  if (sessions.some((s) => s.id === sessionId)) {
+    selectSession(sessionId);
+  }
+});
 
 // Global keyboard shortcuts
 window.addEventListener("keydown", (e) => {
@@ -1133,7 +1150,8 @@ function escapeAttr(str: string): string {
 }
 
 function syncNotifyBtn() {
-  const granted = "Notification" in window && Notification.permission === "granted";
+  const desktopReady = Boolean(window.termdeckDesktop?.notify);
+  const granted = desktopReady || ("Notification" in window && Notification.permission === "granted");
   const active = notifyEnabled && granted;
   btnNotifyToggleEl.classList.toggle("enabled", active);
   btnNotifyToggleEl.title = active
@@ -1142,6 +1160,20 @@ function syncNotifyBtn() {
 }
 
 btnNotifyToggleEl.addEventListener("click", async () => {
+  if (window.termdeckDesktop?.notify) {
+    notifyEnabled = !notifyEnabled;
+    localStorage.setItem(STORAGE_NOTIFY_KEY, notifyEnabled ? "1" : "0");
+    syncNotifyBtn();
+    if (notifyEnabled) {
+      window.termdeckDesktop.notify({
+        sessionId: activeSessionId || "",
+        title: "termdeck notifications enabled",
+        body: "You'll be alerted whenever a session needs a decision.",
+      });
+    }
+    return;
+  }
+
   if (!("Notification" in window)) return;
   if (notifyEnabled && Notification.permission === "granted") {
     notifyEnabled = false;
