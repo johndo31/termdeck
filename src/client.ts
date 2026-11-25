@@ -169,6 +169,7 @@ const chkNotifyCompleteEl = document.getElementById("chk-notify-complete") as HT
 const chkNotifyExitEl = document.getElementById("chk-notify-exit") as HTMLInputElement;
 const chkNotifyBellEl = document.getElementById("chk-notify-bell") as HTMLInputElement;
 const chkRemoteAccessEl = document.getElementById("chk-remote-access") as HTMLInputElement;
+const chkKeepAwakeEl = document.getElementById("chk-keep-awake") as HTMLInputElement;
 const remoteSubsettingsEl = document.getElementById("remote-subsettings")!;
 const remoteStatusBadgeEl = document.getElementById("remote-status-badge")!;
 const inputRemotePortEl = document.getElementById("input-remote-port") as HTMLInputElement;
@@ -1284,6 +1285,8 @@ interface RemoteConfigResponse {
   remoteAccess: boolean;
   remotePort: number;
   authToken: string;
+  keepAwakeOnAc: boolean;
+  keepAwakeActive?: boolean;
   activeHost: string;
   activePort: number;
   activeRemote: boolean;
@@ -1294,6 +1297,7 @@ interface RemoteConfigResponse {
 
 function renderRemoteConfig(cfg: RemoteConfigResponse) {
   chkRemoteAccessEl.checked = cfg.remoteAccess;
+  chkKeepAwakeEl.checked = Boolean(cfg.keepAwakeOnAc);
   inputRemotePortEl.value = String(cfg.remotePort);
   remoteSubsettingsEl.classList.toggle("disabled", !cfg.remoteAccess);
   remoteStatusBadgeEl.textContent = cfg.activeRemote ? `Listening :${cfg.activePort}` : "Local only";
@@ -1351,7 +1355,12 @@ async function fetchRemoteConfig() {
   }
 }
 
-async function patchRemoteConfig(body: { remoteAccess?: boolean; remotePort?: number; regenerateToken?: boolean }) {
+async function patchRemoteConfig(body: {
+  remoteAccess?: boolean;
+  remotePort?: number;
+  keepAwakeOnAc?: boolean;
+  regenerateToken?: boolean;
+}) {
   try {
     const res = await fetch("/api/remote-config", {
       method: "PATCH",
@@ -1367,6 +1376,10 @@ async function patchRemoteConfig(body: { remoteAccess?: boolean; remotePort?: nu
 
 chkRemoteAccessEl.addEventListener("change", () => {
   void patchRemoteConfig({ remoteAccess: chkRemoteAccessEl.checked });
+});
+
+chkKeepAwakeEl.addEventListener("change", () => {
+  void patchRemoteConfig({ keepAwakeOnAc: chkKeepAwakeEl.checked });
 });
 
 inputRemotePortEl.addEventListener("change", () => {

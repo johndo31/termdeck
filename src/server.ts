@@ -26,6 +26,30 @@ const PUBLIC_DIR = join(import.meta.dir, "..", "public");
 
 let remoteServer: ReturnType<typeof Bun.serve<WsData>> | null = null;
 let remoteError: string | null = null;
+let caffeinateProc: ReturnType<typeof Bun.spawn> | null = null;
+
+function syncKeepAwake() {
+  if (caffeinateProc) {
+    try {
+      caffeinateProc.kill();
+    } catch {
+      // ignore
+    }
+    caffeinateProc = null;
+  }
+  if (process.platform !== "darwin") return;
+  if (!config.remoteAccess || !config.keepAwakeOnAc) return;
+  try {
+    // -s prevents system sleep on AC power only (display still sleeps normally);
+    // -w <pid> auto-exits caffeinate if this server process exits.
+    caffeinateProc = Bun.spawn(["caffeinate", "-s", "-w", String(process.pid)], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+  } catch {
+    caffeinateProc = null;
+  }
+}
 
 function activeAuthToken(isRemoteListener: boolean): string {
   if (ENV_AUTH_TOKEN) return ENV_AUTH_TOKEN;
@@ -163,6 +187,8 @@ function buildRemoteConfigPayload(actualPort: number) {
     remoteAccess: config.remoteAccess,
     remotePort: config.remotePort,
     authToken: token,
+    keepAwakeOnAc: config.keepAwakeOnAc,
+    keepAwakeActive: Boolean(caffeinateProc),
     activeHost: remoteServer ? "0.0.0.0" : HOST,
     activePort: effectivePort,
     activeRemote,
@@ -267,10 +293,14 @@ function createServerHandlers(isRemoteListener: boolean) {
         const body = (await req.json()) as {
           remoteAccess?: boolean;
           remotePort?: number;
+          keepAwakeOnAc?: boolean;
           regenerateToken?: boolean;
         };
         if (typeof body.remoteAccess === "boolean") {
           config.remoteAccess = body.remoteAccess;
+        }
+        if (typeof body.keepAwakeOnAc === "boolean") {
+          config.keepAwakeOnAc = body.keepAwakeOnAc;
         }
         if (body.remotePort !== undefined) {
           const p = Number(body.remotePort);
@@ -283,6 +313,7 @@ function createServerHandlers(isRemoteListener: boolean) {
         }
         saveConfig(config);
         syncRemoteListener();
+        syncKeepAwake();
         return json(buildRemoteConfigPayload(srv.port));
       }
     }
@@ -484,6 +515,14 @@ const server = Bun.serve<WsData>({
 });
 
 syncRemoteListener();
+syncKeepAwake();
+
+process.on("SIGTERM", () => {
+  if (caffeinateProc) {
+    try { caffeinateProc.kill(); } catch {}
+  }
+  process.exit(0);
+});
 
 ptyManager.setServerUrl(`http://${HOST}:${server.port}`);
 console.log(`TERMDECK_READY http://${HOST}:${server.port}`);

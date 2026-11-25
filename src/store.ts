@@ -27,6 +27,7 @@ export interface TermdeckConfig {
   remoteAccess: boolean;
   remotePort: number;
   authToken: string;
+  keepAwakeOnAc: boolean;
   prefs?: UiPrefs;
 }
 
@@ -42,6 +43,7 @@ export function loadConfig(): TermdeckConfig {
     remoteAccess: false,
     remotePort: 3434,
     authToken: "",
+    keepAwakeOnAc: false,
   };
   if (!existsSync(CONFIG_FILE)) return defaults;
   try {
@@ -51,6 +53,7 @@ export function loadConfig(): TermdeckConfig {
       remoteAccess: Boolean(parsed.remoteAccess),
       remotePort: Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : 3434,
       authToken: typeof parsed.authToken === "string" ? parsed.authToken : "",
+      keepAwakeOnAc: Boolean(parsed.keepAwakeOnAc),
       prefs: parsed.prefs && typeof parsed.prefs === "object" ? parsed.prefs : undefined,
     };
   } catch {
