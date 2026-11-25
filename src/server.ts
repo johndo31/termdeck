@@ -19,10 +19,19 @@ import {
 import type { AgentKind, SessionRecord, SessionView } from "./types";
 
 let config = loadConfig();
-const PORT = process.env.PORT !== undefined ? Number(process.env.PORT) : (config.remoteAccess ? config.remotePort : 3434);
-const HOST = process.env.HOST || (config.remoteAccess ? "0.0.0.0" : "127.0.0.1");
-const ACTIVE_AUTH_TOKEN = (process.env.TERMDECK_AUTH_TOKEN || (HOST !== "127.0.0.1" ? config.authToken : "")).trim();
+const PORT = process.env.PORT !== undefined ? Number(process.env.PORT) : 3434;
+const HOST = process.env.HOST || "127.0.0.1";
+const ENV_AUTH_TOKEN = (process.env.TERMDECK_AUTH_TOKEN || "").trim();
 const PUBLIC_DIR = join(import.meta.dir, "..", "public");
+
+let remoteServer: ReturnType<typeof Bun.serve<WsData>> | null = null;
+let remoteError: string | null = null;
+
+function activeAuthToken(isRemoteListener: boolean): string {
+  if (ENV_AUTH_TOKEN) return ENV_AUTH_TOKEN;
+  if (isRemoteListener) return config.authToken.trim();
+  return "";
+}
 
 let sessions: SessionRecord[] = loadSessions();
 
@@ -83,15 +92,15 @@ function isLoopbackIp(address: string | undefined): boolean {
   return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 }
 
-function isAuthorizedRequest(req: Request, clientIp: string | undefined): boolean {
-  if (!ACTIVE_AUTH_TOKEN) return true;
+function isAuthorizedRequest(req: Request, clientIp: string | undefined, token: string): boolean {
+  if (!token) return true;
   if (isLoopbackIp(clientIp)) return true;
   const authHeader = req.headers.get("authorization") || "";
-  if (authHeader === `Bearer ${ACTIVE_AUTH_TOKEN}`) return true;
+  if (authHeader === `Bearer ${token}`) return true;
   const cookies = parseCookies(req.headers.get("cookie"));
-  if (cookies.termdeck_auth === ACTIVE_AUTH_TOKEN) return true;
+  if (cookies.termdeck_auth === token) return true;
   const url = new URL(req.url);
-  if (url.searchParams.get("token") === ACTIVE_AUTH_TOKEN) return true;
+  if (url.searchParams.get("token") === token) return true;
   return false;
 }
 
@@ -145,21 +154,20 @@ function isAllowedOrigin(req: Request, actualPort: number): boolean {
 
 function buildRemoteConfigPayload(actualPort: number) {
   const addresses = listNetworkAddresses();
-  const effectivePort = config.remoteAccess ? config.remotePort : actualPort;
-  const tokenQuery = config.authToken ? `/?token=${encodeURIComponent(config.authToken)}` : "/";
-  const activeRemote = HOST !== "127.0.0.1";
-  const needsRestart =
-    config.remoteAccess !== activeRemote ||
-    (config.remoteAccess && (actualPort !== config.remotePort || ACTIVE_AUTH_TOKEN !== config.authToken));
+  const activeRemote = Boolean(remoteServer) || HOST !== "127.0.0.1";
+  const effectivePort = remoteServer ? remoteServer.port : (config.remoteAccess ? config.remotePort : actualPort);
+  const token = config.authToken || ENV_AUTH_TOKEN;
+  const tokenQuery = token ? `/?token=${encodeURIComponent(token)}` : "/";
 
   return {
     remoteAccess: config.remoteAccess,
     remotePort: config.remotePort,
-    authToken: config.authToken,
-    activeHost: HOST,
-    activePort: actualPort,
+    authToken: token,
+    activeHost: remoteServer ? "0.0.0.0" : HOST,
+    activePort: effectivePort,
     activeRemote,
-    needsRestart,
+    needsRestart: false,
+    error: remoteError,
     urls: addresses.map((a) => ({
       iface: a.iface,
       address: a.address,
@@ -169,23 +177,23 @@ function buildRemoteConfigPayload(actualPort: number) {
   };
 }
 
-const server = Bun.serve<WsData>({
-  hostname: HOST,
-  port: PORT,
-  async fetch(req, srv) {
+function createServerHandlers(isRemoteListener: boolean) {
+  return {
+    async fetch(req: Request, srv: ReturnType<typeof Bun.serve<WsData>>) {
     const url = new URL(req.url);
     const { pathname } = url;
     const clientIp = srv.requestIP(req)?.address;
+    const token = activeAuthToken(isRemoteListener);
 
     // Magic-link token login -> set HttpOnly cookie and strip token from URL
-    if (ACTIVE_AUTH_TOKEN && pathname === "/" && url.searchParams.has("token")) {
+    if (token && pathname === "/" && url.searchParams.has("token")) {
       const provided = url.searchParams.get("token") || "";
-      if (provided === ACTIVE_AUTH_TOKEN) {
+      if (provided === token) {
         return new Response(null, {
           status: 302,
           headers: {
             location: "/",
-            "set-cookie": `termdeck_auth=${encodeURIComponent(ACTIVE_AUTH_TOKEN)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
+            "set-cookie": `termdeck_auth=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
           },
         });
       }
@@ -193,7 +201,7 @@ const server = Bun.serve<WsData>({
     }
 
     // Require auth for non-loopback requests when remote token is active
-    if (!isAuthorizedRequest(req, clientIp)) {
+    if (!isAuthorizedRequest(req, clientIp, token)) {
       if (pathname === "/" || pathname === "/index.html") {
         return renderLoginPage(false);
       }
@@ -262,6 +270,7 @@ const server = Bun.serve<WsData>({
           config.authToken = generateAuthToken();
         }
         saveConfig(config);
+        syncRemoteListener();
         return json(buildRemoteConfigPayload(srv.port));
       }
     }
@@ -384,7 +393,7 @@ const server = Bun.serve<WsData>({
     return serveStatic(pathname);
   },
   websocket: {
-    open(ws) {
+    open(ws: import("bun").ServerWebSocket<WsData>) {
       if (ws.data.kind === "events") {
         ptyManager.addEventClient(ws);
         return;
@@ -397,7 +406,7 @@ const server = Bun.serve<WsData>({
       }
       ptyManager.attachClient(session, ws);
     },
-    message(ws, raw) {
+    message(ws: import("bun").ServerWebSocket<WsData>, raw: string | Buffer) {
       if (ws.data.kind !== "term") return;
       const { sessionId } = ws.data;
       const session = sessions.find((s) => s.id === sessionId);
@@ -417,7 +426,7 @@ const server = Bun.serve<WsData>({
         // Ignore malformed control frames
       }
     },
-    close(ws) {
+    close(ws: import("bun").ServerWebSocket<WsData>) {
       if (ws.data.kind === "events") {
         ptyManager.removeEventClient(ws);
         return;
@@ -425,7 +434,44 @@ const server = Bun.serve<WsData>({
       ptyManager.detachClient(ws.data.sessionId, ws);
     },
   },
+  };
+}
+
+function syncRemoteListener() {
+  if (remoteServer) {
+    try {
+      remoteServer.stop(true);
+    } catch {
+      // ignore
+    }
+    remoteServer = null;
+  }
+  remoteError = null;
+
+  if (!config.remoteAccess || HOST !== "127.0.0.1") return;
+  if (!config.authToken) {
+    config.authToken = generateAuthToken();
+    saveConfig(config);
+  }
+  try {
+    remoteServer = Bun.serve<WsData>({
+      hostname: "0.0.0.0",
+      port: config.remotePort,
+      ...createServerHandlers(true),
+    });
+  } catch (err) {
+    remoteError = err instanceof Error ? err.message : `Failed to listen on port ${config.remotePort}`;
+    remoteServer = null;
+  }
+}
+
+const server = Bun.serve<WsData>({
+  hostname: HOST,
+  port: PORT,
+  ...createServerHandlers(HOST !== "127.0.0.1"),
 });
+
+syncRemoteListener();
 
 ptyManager.setServerUrl(`http://${HOST}:${server.port}`);
 console.log(`TERMDECK_READY http://${HOST}:${server.port}`);

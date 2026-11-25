@@ -1,20 +1,10 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, Notification, screen, shell } = require("electron");
 const { spawn } = require("node:child_process");
-const { existsSync, readFileSync } = require("node:fs");
+const { existsSync } = require("node:fs");
 const { homedir } = require("node:os");
 const path = require("node:path");
 
 const APP_ROOT = path.resolve(__dirname, "..");
-
-function readTermdeckConfig() {
-  try {
-    const configPath = path.join(homedir(), ".termdeck", "config.json");
-    if (!existsSync(configPath)) return {};
-    return JSON.parse(readFileSync(configPath, "utf8")) || {};
-  } catch {
-    return {};
-  }
-}
 
 let mainWindow = null;
 let serverProc = null;
@@ -50,25 +40,12 @@ function startBackendServer() {
     ];
     const mergedPath = [...extraPaths, process.env.PATH || ""].filter(Boolean).join(":");
 
-    const cfg = readTermdeckConfig();
-    const remoteEnabled = Boolean(cfg.remoteAccess);
-    const configuredPort = Number(cfg.remotePort);
-    const port =
-      process.env.PORT ||
-      (remoteEnabled && Number.isInteger(configuredPort) && configuredPort >= 1024 && configuredPort <= 65535
-        ? String(configuredPort)
-        : "0");
-    const host = process.env.HOST || (remoteEnabled ? "0.0.0.0" : "127.0.0.1");
-
     const serverEnv = {
       ...process.env,
       PATH: mergedPath,
-      PORT: port,
-      HOST: host,
+      PORT: process.env.PORT || "0",
+      HOST: process.env.HOST || "127.0.0.1",
     };
-    if (remoteEnabled && typeof cfg.authToken === "string" && cfg.authToken.trim()) {
-      serverEnv.TERMDECK_AUTH_TOKEN = cfg.authToken.trim();
-    }
     delete serverEnv.SSH_CONNECTION;
     delete serverEnv.SSH_CLIENT;
     delete serverEnv.SSH_TTY;

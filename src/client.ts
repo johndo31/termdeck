@@ -1190,6 +1190,7 @@ interface RemoteConfigResponse {
   activePort: number;
   activeRemote: boolean;
   needsRestart: boolean;
+  error?: string | null;
   urls: Array<{ iface: string; address: string; kind: "vpn" | "lan"; url: string }>;
 }
 
@@ -1199,7 +1200,16 @@ function renderRemoteConfig(cfg: RemoteConfigResponse) {
   remoteSubsettingsEl.classList.toggle("disabled", !cfg.remoteAccess);
   remoteStatusBadgeEl.textContent = cfg.activeRemote ? `Listening :${cfg.activePort}` : "Local only";
   remoteStatusBadgeEl.classList.toggle("active", cfg.activeRemote);
-  remoteRestartNoteEl.classList.toggle("hidden", !cfg.needsRestart);
+
+  if (cfg.error) {
+    remoteRestartNoteEl.textContent = `Could not bind port ${cfg.remotePort}: ${cfg.error}`;
+    remoteRestartNoteEl.classList.remove("hidden");
+  } else if (cfg.needsRestart) {
+    remoteRestartNoteEl.textContent = "Quit (⌘Q) and reopen termdeck to apply remote binding changes.";
+    remoteRestartNoteEl.classList.remove("hidden");
+  } else {
+    remoteRestartNoteEl.classList.add("hidden");
+  }
 
   remoteUrlsListEl.innerHTML = "";
   if (!cfg.remoteAccess) return;
