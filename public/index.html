@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>termdeck</title>
+    <link rel="stylesheet" href="/xterm.css" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-top">
+          <div class="brand">
+            <span class="brand-mark">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="1.5" y="2.5" width="13" height="11" rx="2.5" stroke="currentColor" stroke-width="1.4" />
+                <path d="M5 6.2L7.3 8L5 9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M8.8 9.8H11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+              </svg>
+            </span>
+            <span class="brand-name">termdeck</span>
+          </div>
+        </div>
+
+        <div class="sidebar-actions">
+          <button id="btn-new-session" class="btn-new-session" title="New session (⌘K)">
+            <span class="btn-new-session-left">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path d="M8 3.2V12.8M3.2 8H12.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              </svg>
+              <span>New session</span>
+            </span>
+            <span class="shortcut-hint">⌘K</span>
+          </button>
+        </div>
+
+        <div id="session-list" class="session-list"></div>
+
+        <div id="attention-bar" class="attention-bar hidden"></div>
+
+        <div id="sidebar-footer" class="sidebar-footer">
+          <span id="persistence-pill" class="persistence-pill"></span>
+          <div class="footer-actions">
+            <button id="btn-notify-toggle" class="notify-btn" title="Enable desktop notifications for decisions">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path d="M8 2.2C5.8 2.2 4.2 3.8 4.2 6V8.8L3 10.6H13L11.8 8.8V6C11.8 3.8 10.2 2.2 8 2.2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+                <path d="M6.5 12.2C6.8 13 7.35 13.5 8 13.5C8.65 13.5 9.2 13 9.5 12.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+              </svg>
+            </button>
+            <button id="btn-settings" class="notify-btn" title="Appearance settings (⌘,)">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.3" />
+                <path d="M8 2.2V3.6M8 12.4V13.8M2.2 8H3.6M12.4 8H13.8M3.9 3.9L4.9 4.9M11.1 11.1L12.1 12.1M12.1 3.9L11.1 4.9M4.9 11.1L3.9 12.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+      <div id="sidebar-resizer" class="sidebar-resizer" title="Drag to resize sidebar"></div>
+
+      <main class="main">
+        <header id="term-header" class="term-header">
+          <div class="header-left">
+            <button id="btn-toggle-sidebar" class="icon-btn" title="Toggle sidebar (⌘B)">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                <rect x="1.75" y="2.5" width="12.5" height="11" rx="2" stroke="currentColor" stroke-width="1.35" />
+                <path d="M5.75 2.5V13.5" stroke="currentColor" stroke-width="1.35" />
+              </svg>
+            </button>
+            <div id="header-session-info" class="header-session-info hidden">
+              <span id="header-agent-icon" class="header-agent-icon"></span>
+              <input id="header-title-input" class="header-title-input" type="text" spellcheck="false" title="Click to rename" />
+              <span class="header-sep">/</span>
+              <span id="header-project" class="pill pill-project"></span>
+              <span id="header-branch" class="pill pill-branch hidden"></span>
+              <span id="header-host" class="pill pill-host"></span>
+              <span id="header-status" class="pill pill-status"></span>
+            </div>
+            <div id="header-empty-title" class="header-empty-title">No session selected</div>
+          </div>
+
+          <div id="header-actions" class="header-actions hidden">
+            <button id="btn-spawn-shell" class="header-btn" title="Open a companion shell in this folder">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path d="M3.5 5.5L6.5 8L3.5 10.5M8.25 10.5H12.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <span>+ Shell</span>
+            </button>
+            <button id="btn-resume" class="header-btn" title="Resume session">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path d="M13 8A5 5 0 1 1 11.4 4.35M13 3V6H10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <span>Resume</span>
+            </button>
+            <button id="btn-fresh" class="header-btn" title="Restart fresh (new agent session)">
+              <span>Fresh</span>
+            </button>
+            <button id="btn-delete" class="header-btn header-btn-danger" title="Delete session">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path d="M3.5 4.5H12.5M6 4.5V3.25C6 2.84 6.34 2.5 6.75 2.5H9.25C9.66 2.5 10 2.84 10 3.25V4.5M5 4.5L5.6 12.6C5.64 13.11 6.06 13.5 6.57 13.5H9.43C9.94 13.5 10.36 13.11 10.4 12.6L11 4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <section class="stage">
+          <div id="empty-state" class="empty-state">
+            <div class="empty-card">
+              <div class="empty-icon">
+                <svg width="26" height="26" viewBox="0 0 16 16" fill="none">
+                  <rect x="1.5" y="2.5" width="13" height="11" rx="2.5" stroke="currentColor" stroke-width="1.25" />
+                  <path d="M5 6.2L7.3 8L5 9.8" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M8.8 9.8H11.2" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" />
+                </svg>
+              </div>
+              <h1>Your terminals, always where you left them</h1>
+              <p>Zero prompt injection. Native Claude Code, Antigravity, Codex, Gemini, or shell sessions—local or over SSH.</p>
+              <button id="btn-empty-new" class="btn-primary">New Session</button>
+            </div>
+          </div>
+          <div id="terminals-mount" class="terminals-mount"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="modal-backdrop" class="modal-backdrop hidden">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-header">
+          <h2 id="modal-title">New Session</h2>
+          <button id="btn-modal-close" class="icon-btn" aria-label="Close">✕</button>
+        </div>
+
+        <form id="new-session-form" class="modal-body">
+          <div class="field">
+            <label>Agent</label>
+            <div id="agent-grid" class="agent-grid"></div>
+          </div>
+
+          <div class="field-row">
+            <div class="field flex-1">
+              <label for="input-host">Machine</label>
+              <input id="input-host" list="host-options" value="local" placeholder="local or ssh-host / user@ip" autocomplete="off" />
+              <datalist id="host-options"></datalist>
+            </div>
+            <div class="field flex-1">
+              <label for="input-title">Title <span class="muted">(optional)</span></label>
+              <input id="input-title" type="text" placeholder="e.g. Fix OAuth refresh" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="input-cwd">Project Directory</label>
+            <div class="input-with-btn">
+              <input id="input-cwd" list="project-options" type="text" placeholder="~/Development/my-project" autocomplete="off" required />
+              <button type="button" id="btn-pick-folder" class="header-btn browse-btn hidden" title="Choose folder in Finder">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                  <path d="M2 4.5C2 3.67 2.67 3 3.5 3H6.3L7.6 4.5H12.5C13.33 4.5 14 5.17 14 6V11.5C14 12.33 13.33 13 12.5 13H3.5C2.67 13 2 12.33 2 11.5V4.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+                </svg>
+                <span>Browse…</span>
+              </button>
+            </div>
+            <datalist id="project-options"></datalist>
+            <div id="quick-projects" class="quick-projects"></div>
+          </div>
+
+          <div id="discovered-box" class="discovered-box hidden">
+            <div class="discovered-header">
+              <span>Found previous sessions in this folder</span>
+              <span class="muted">Auto-resumes latest</span>
+            </div>
+            <div id="discovered-list" class="discovered-list"></div>
+          </div>
+
+          <details class="advanced-details">
+            <summary>Custom launch / resume command (optional)</summary>
+            <div class="field-row advanced-body">
+              <div class="field flex-1">
+                <label for="input-custom-cmd">Start command</label>
+                <input id="input-custom-cmd" type="text" placeholder="Overrides default agent CLI" autocomplete="off" />
+              </div>
+              <div class="field flex-1">
+                <label for="input-custom-resume">Resume command</label>
+                <input id="input-custom-resume" type="text" placeholder="Used when resuming after exit" autocomplete="off" />
+              </div>
+            </div>
+          </details>
+
+          <div class="modal-footer">
+            <button type="button" id="btn-modal-cancel" class="header-btn">Cancel</button>
+            <button type="submit" class="btn-primary">Open Terminal</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="settings-backdrop" class="modal-backdrop hidden">
+      <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="modal-header">
+          <h2 id="settings-title">Appearance</h2>
+          <button id="btn-settings-close" class="icon-btn" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>UI &amp; Sidebar Text Size</span>
+              <span id="val-ui-size" class="setting-value">14px</span>
+            </div>
+            <input id="range-ui-size" type="range" min="12" max="18" step="1" value="14" />
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Terminal Font Size <span class="muted">(⌘+ / ⌘-)</span></span>
+              <span id="val-term-size" class="setting-value">14px</span>
+            </div>
+            <input id="range-term-size" type="range" min="10" max="24" step="1" value="14" />
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Sidebar Width</span>
+              <span id="val-sidebar-width" class="setting-value">248px</span>
+            </div>
+            <input id="range-sidebar-width" type="range" min="180" max="360" step="4" value="248" />
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" id="btn-settings-reset" class="header-btn">Reset Defaults</button>
+            <button type="button" id="btn-settings-done" class="btn-primary">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>

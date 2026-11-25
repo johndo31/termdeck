@@ -1,0 +1,25 @@
+{
+  "name": "termdeck",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "build:client": "bun build src/client.ts --outdir public --target browser --sourcemap=linked && cp node_modules/@xterm/xterm/css/xterm.css public/xterm.css",
+    "build:app": "bun scripts/build-app.ts",
+    "start": "bun run build:client && env -u ELECTRON_RUN_AS_NODE electron .",
+    "desktop": "bun run build:client && env -u ELECTRON_RUN_AS_NODE electron .",
+    "web": "bun run build:client && bun src/server.ts",
+    "dev:web": "bun run build:client && bun --watch src/server.ts"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "electron": "^45.4.1"
+  }
+}
