@@ -23,8 +23,8 @@ function stripAnsi(input: string): string {
     .replace(/\r/g, "");
 }
 
-// Decision / approval prompt patterns across Claude Code, Antigravity, Codex, Gemini, and CLI tools
-const DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
+// Multi-line TUI approval / picker dialogs (can sit 2-6 lines above the bottom border)
+const TUI_DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: /do you want to (?:proceed|continue|run|execute|make this edit|create|delete|overwrite|allow)/i, detail: "Needs approval" },
   { re: /allow (?:once|always|for this session|this action|tool|command)/i, detail: "Needs approval" },
   { re: /yes,\s*(?:allow|proceed|continue|don't ask again)/i, detail: "Needs approval" },
@@ -34,8 +34,12 @@ const DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: /(?:enter|↑\/↓|arrow keys) to (?:select|choose|confirm)/i, detail: "Needs decision" },
   { re: /select an option|choose an option|which option|pick one/i, detail: "Needs decision" },
   { re: /waiting for (?:your )?(?:input|approval|decision|confirmation)/i, detail: "Waiting for input" },
+];
+
+// Single-line interactive prompts: only match at the very end (last 1-2 lines)
+const TAIL_LINE_DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: /press enter to continue|hit enter to continue/i, detail: "Press Enter" },
-  { re: /\(y\/n\)|\[y\/n\]|\[Y\/n\]|\[y\/N\]|\(yes\/no\)/, detail: "Confirm (y/n)" },
+  { re: /(?:\(y\/n\)|\[y\/n\]|\[Y\/n\]|\[y\/N\]|\(yes\/no\))\s*[:?]?\s*$/m, detail: "Confirm (y/n)" },
   { re: /would you like (?:me )?to\b.*\?\s*$/im, detail: "Waiting for answer" },
 ];
 
@@ -214,9 +218,10 @@ export class SessionStatusDetector {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
       if (this.status === "working") {
-        const recent = this.getRecentLines(8);
+        const recent = this.getRecentLines(6);
         const bottom = this.getRecentLines(3);
-        const decision = IDLE_FOOTER_RE.test(bottom) ? null : this.detectDecision(recent);
+        const isIdlePrompt = IDLE_FOOTER_RE.test(bottom) || IDLE_PROMPT_RE.test(bottom);
+        const decision = isIdlePrompt ? null : this.detectDecision(recent, this.getRecentLines(2));
         if (decision) {
           this.setState("needs_input", decision, true);
         } else {
@@ -228,17 +233,17 @@ export class SessionStatusDetector {
 
   private inspectSettledTail(hadBell: boolean) {
     if (this.status === "exited") return;
-    const recent = this.getRecentLines(8);
+    const recent = this.getRecentLines(6);
     const bottom = this.getRecentLines(3);
 
-    // If the CLI clearly returned to its normal idle input footer/prompt, settle to idle
-    if (IDLE_FOOTER_RE.test(bottom) && !this.detectWorkingHint(recent, false)) {
+    // If the CLI clearly returned to its normal idle input footer or shell prompt, settle to idle first
+    if ((IDLE_FOOTER_RE.test(bottom) || IDLE_PROMPT_RE.test(bottom)) && !this.detectWorkingHint(recent, false)) {
       this.clearTimers();
       this.setState("idle", "Ready");
       return;
     }
 
-    const decision = this.detectDecision(recent);
+    const decision = this.detectDecision(recent, this.getRecentLines(2));
     if (decision) {
       this.clearTimers();
       this.setState("needs_input", decision, true);
@@ -249,13 +254,6 @@ export class SessionStatusDetector {
     if (hadBell && this.agent !== "shell") {
       this.clearTimers();
       this.setState("needs_input", "Needs attention", true);
-      return;
-    }
-
-    // If it clearly returned to an idle shell/agent prompt, settle to idle quickly
-    if (IDLE_PROMPT_RE.test(recent) && !this.detectWorkingHint(recent, false)) {
-      this.clearTimers();
-      this.setState("idle", "Ready");
     }
   }
 
@@ -264,11 +262,19 @@ export class SessionStatusDetector {
     return lines.slice(-count).join("\n");
   }
 
-  private detectDecision(recentText: string): string | null {
-    if (!recentText) return null;
-    for (const pattern of DECISION_PATTERNS) {
-      if (pattern.re.test(recentText)) {
-        return pattern.detail;
+  private detectDecision(recentBlock: string, lastTwoLines: string): string | null {
+    if (lastTwoLines) {
+      for (const pattern of TAIL_LINE_DECISION_PATTERNS) {
+        if (pattern.re.test(lastTwoLines)) {
+          return pattern.detail;
+        }
+      }
+    }
+    if (recentBlock) {
+      for (const pattern of TUI_DECISION_PATTERNS) {
+        if (pattern.re.test(recentBlock)) {
+          return pattern.detail;
+        }
       }
     }
     return null;
