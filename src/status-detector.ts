@@ -45,10 +45,11 @@ const TAIL_LINE_DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: /would you like (?:me )?to\b.*\?\s*$/im, detail: "Waiting for answer" },
 ];
 
-// Active working cues (spinners, interrupt hints, tool activity)
-const SPINNER_CHARS = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒✶✳✽✢✻]/;
+// Active working cues (interrupt hints, braille spinners, tool activity)
+const BRAILLE_SPINNER_RE = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]/;
+const ACTIVE_INTERRUPT_RE = /esc to interrupt|ctrl\+c to interrupt|ctrl-c to cancel/i;
 const WORKING_PATTERNS: Array<{ re: RegExp; detail: string }> = [
-  { re: /esc to interrupt|ctrl\+c to interrupt|ctrl-c to cancel/i, detail: "Working…" },
+  { re: ACTIVE_INTERRUPT_RE, detail: "Working…" },
   { re: /\b(?:thinking|reasoning|pondering|analyzing|planning)\b\.{0,3}/i, detail: "Thinking…" },
   { re: /\b(?:reading|searching|editing|writing|running|executing|building|testing)\b/i, detail: "Running tool…" },
 ];
@@ -153,7 +154,7 @@ export class SessionStatusDetector {
         oscNotification = payload.replace(/^notify;/i, "").slice(0, 48) || "Needs attention";
         oscBell = true;
       } else if (code === "0" || code === "2") {
-        if (SPINNER_CHARS.test(payload)) {
+        if (BRAILLE_SPINNER_RE.test(payload)) {
           oscTitleWorking = true;
         }
       }
@@ -205,18 +206,21 @@ export class SessionStatusDetector {
     // 3. Determine immediate state while output is flowing
     const recentLines = this.getRecentLines(14);
     const bottomLines = this.getRecentLines(3);
-    const workingHint = this.detectWorkingHint(recentLines, oscTitleWorking);
+    const strongWorkingCue = oscTitleWorking || ACTIVE_INTERRUPT_RE.test(bottomLines);
+    const workingHint = this.hasPendingTurn || strongWorkingCue
+      ? this.detectWorkingHint(recentLines, oscTitleWorking)
+      : null;
 
-    if (workingHint) {
+    if (strongWorkingCue) {
       this.hasPendingTurn = true;
-      this.setState("working", workingHint, false);
+      this.setState("working", workingHint || "Working…", false);
     } else if (
       this.hasPendingTurn &&
       clean.trim().length > 0 &&
       !IDLE_PROMPT_RE.test(recentLines) &&
       !(this.status === "idle" && IDLE_FOOTER_RE.test(bottomLines))
     ) {
-      this.setState("working", this.agent === "shell" ? "Running…" : "Working…", false);
+      this.setState("working", workingHint || (this.agent === "shell" ? "Running…" : "Working…"), false);
     } else if (standaloneBell && this.status !== "working") {
       this.onChange(this.state, true);
     }
@@ -302,7 +306,7 @@ export class SessionStatusDetector {
     for (const p of WORKING_PATTERNS) {
       if (p.re.test(bottom)) return p.detail;
     }
-    if (SPINNER_CHARS.test(bottom)) return "Working…";
+    if (BRAILLE_SPINNER_RE.test(bottom)) return "Working…";
     return null;
   }
 
