@@ -82,6 +82,11 @@ function agentIconSvg(agent: AgentKind, size = 15): string {
 
 const STORAGE_ACTIVE_KEY = "termdeck:activeSessionId";
 const STORAGE_NOTIFY_KEY = "termdeck:notifyEnabled";
+const STORAGE_NOTIFY_UNFOCUSED_KEY = "termdeck:notifyOnlyUnfocused";
+const STORAGE_NOTIFY_DECISION_KEY = "termdeck:notifyOnDecision";
+const STORAGE_NOTIFY_COMPLETE_KEY = "termdeck:notifyOnComplete";
+const STORAGE_NOTIFY_EXIT_KEY = "termdeck:notifyOnExit";
+const STORAGE_NOTIFY_BELL_KEY = "termdeck:notifyOnBell";
 const STORAGE_FONT_SIZE_KEY = "termdeck:fontSize";
 const STORAGE_UI_SIZE_KEY = "termdeck:uiFontSize";
 const STORAGE_SIDEBAR_WIDTH_KEY = "termdeck:sidebarWidth";
@@ -101,6 +106,11 @@ let meta: MetaResponse = {
 let sessions: SessionView[] = [];
 let activeSessionId: string | null = localStorage.getItem(STORAGE_ACTIVE_KEY);
 let notifyEnabled = localStorage.getItem(STORAGE_NOTIFY_KEY) === "1";
+let notifyOnlyUnfocused = localStorage.getItem(STORAGE_NOTIFY_UNFOCUSED_KEY) !== "0";
+let notifyOnDecision = localStorage.getItem(STORAGE_NOTIFY_DECISION_KEY) !== "0";
+let notifyOnComplete = localStorage.getItem(STORAGE_NOTIFY_COMPLETE_KEY) === "1";
+let notifyOnExit = localStorage.getItem(STORAGE_NOTIFY_EXIT_KEY) === "1";
+let notifyOnBell = localStorage.getItem(STORAGE_NOTIFY_BELL_KEY) !== "0";
 let termFontSize = Math.max(
   MIN_FONT_SIZE,
   Math.min(MAX_FONT_SIZE, Number(localStorage.getItem(STORAGE_FONT_SIZE_KEY)) || DEFAULT_FONT_SIZE)
@@ -134,6 +144,13 @@ const rangeTermSizeEl = document.getElementById("range-term-size") as HTMLInputE
 const valTermSizeEl = document.getElementById("val-term-size")!;
 const rangeSidebarWidthEl = document.getElementById("range-sidebar-width") as HTMLInputElement;
 const valSidebarWidthEl = document.getElementById("val-sidebar-width")!;
+const notifySubsettingsEl = document.getElementById("notify-subsettings")!;
+const chkNotifyEnabledEl = document.getElementById("chk-notify-enabled") as HTMLInputElement;
+const chkNotifyUnfocusedEl = document.getElementById("chk-notify-unfocused") as HTMLInputElement;
+const chkNotifyDecisionEl = document.getElementById("chk-notify-decision") as HTMLInputElement;
+const chkNotifyCompleteEl = document.getElementById("chk-notify-complete") as HTMLInputElement;
+const chkNotifyExitEl = document.getElementById("chk-notify-exit") as HTMLInputElement;
+const chkNotifyBellEl = document.getElementById("chk-notify-bell") as HTMLInputElement;
 const headerSessionInfoEl = document.getElementById("header-session-info")!;
 const headerEmptyTitleEl = document.getElementById("header-empty-title")!;
 const headerActionsEl = document.getElementById("header-actions")!;
@@ -585,7 +602,9 @@ function fitAndSync(entry: MountedTerminal) {
 
 function maybeNotifyDecision(session: SessionView, detail?: string) {
   if (!notifyEnabled) return;
-  if (document.hasFocus() && document.visibilityState === "visible" && session.id === activeSessionId) return;
+  const appFocused = document.hasFocus() && document.visibilityState === "visible";
+  if (notifyOnlyUnfocused && appFocused) return;
+  if (appFocused && session.id === activeSessionId) return;
 
   const title = `${session.title} (${session.project})`;
   const body = detail || "Waiting for your decision";
@@ -655,8 +674,12 @@ function updateSessionStatus(
   s.statusDetail = statusDetail;
   if (backend) s.backend = backend;
 
-  if (status === "needs_input" && prevStatus !== "needs_input") {
+  if (notifyOnDecision && status === "needs_input" && prevStatus !== "needs_input") {
     maybeNotifyDecision(s, statusDetail);
+  } else if (notifyOnComplete && status === "idle" && prevStatus === "working" && s.agent !== "shell") {
+    maybeNotifyDecision(s, "Finished turn");
+  } else if (notifyOnExit && status === "exited" && prevStatus !== "exited") {
+    maybeNotifyDecision(s, statusDetail || "Session exited");
   }
 
   if (!updateSessionRowInPlace(s)) {
@@ -687,8 +710,8 @@ function connectEventsWs() {
         updateSessionStatus(msg.sessionId, msg.status, msg.statusDetail, msg.backend);
       } else if (msg.type === "bell" && msg.sessionId) {
         const s = sessions.find((x) => x.id === msg.sessionId);
-        if (s && s.status === "needs_input") {
-          maybeNotifyDecision(s, msg.statusDetail);
+        if (s && notifyOnBell) {
+          maybeNotifyDecision(s, msg.statusDetail || "Terminal bell");
         }
       }
     } catch {
@@ -1010,6 +1033,13 @@ function applyAppearance() {
   valTermSizeEl.textContent = `${termFontSize}px`;
   rangeSidebarWidthEl.value = String(sidebarWidth);
   valSidebarWidthEl.textContent = `${sidebarWidth}px`;
+  chkNotifyEnabledEl.checked = notifyEnabled;
+  chkNotifyUnfocusedEl.checked = notifyOnlyUnfocused;
+  chkNotifyDecisionEl.checked = notifyOnDecision;
+  chkNotifyCompleteEl.checked = notifyOnComplete;
+  chkNotifyExitEl.checked = notifyOnExit;
+  chkNotifyBellEl.checked = notifyOnBell;
+  notifySubsettingsEl.classList.toggle("disabled", !notifyEnabled);
 }
 
 function setTerminalFontSize(nextSize: number) {
@@ -1068,11 +1098,93 @@ rangeSidebarWidthEl.addEventListener("input", () => {
   applyAppearance();
 });
 
+async function setNotificationsEnabled(next: boolean, sendConfirmation = false) {
+  if (window.termdeckDesktop?.notify) {
+    notifyEnabled = next;
+    localStorage.setItem(STORAGE_NOTIFY_KEY, notifyEnabled ? "1" : "0");
+    syncNotifyBtn();
+    applyAppearance();
+    if (notifyEnabled && sendConfirmation) {
+      window.termdeckDesktop.notify({
+        sessionId: activeSessionId || "",
+        title: "termdeck notifications enabled",
+        body: "Alerts will fire for your selected events.",
+      });
+    }
+    return;
+  }
+
+  if (!("Notification" in window)) return;
+  if (!next) {
+    notifyEnabled = false;
+    localStorage.setItem(STORAGE_NOTIFY_KEY, "0");
+    syncNotifyBtn();
+    applyAppearance();
+    return;
+  }
+  const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+  notifyEnabled = perm === "granted";
+  localStorage.setItem(STORAGE_NOTIFY_KEY, notifyEnabled ? "1" : "0");
+  syncNotifyBtn();
+  applyAppearance();
+}
+
+chkNotifyEnabledEl.addEventListener("change", () => {
+  void setNotificationsEnabled(chkNotifyEnabledEl.checked, false);
+});
+
+chkNotifyUnfocusedEl.addEventListener("change", () => {
+  notifyOnlyUnfocused = chkNotifyUnfocusedEl.checked;
+  localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, notifyOnlyUnfocused ? "1" : "0");
+});
+
+chkNotifyDecisionEl.addEventListener("change", () => {
+  notifyOnDecision = chkNotifyDecisionEl.checked;
+  localStorage.setItem(STORAGE_NOTIFY_DECISION_KEY, notifyOnDecision ? "1" : "0");
+});
+
+chkNotifyCompleteEl.addEventListener("change", () => {
+  notifyOnComplete = chkNotifyCompleteEl.checked;
+  localStorage.setItem(STORAGE_NOTIFY_COMPLETE_KEY, notifyOnComplete ? "1" : "0");
+});
+
+chkNotifyExitEl.addEventListener("change", () => {
+  notifyOnExit = chkNotifyExitEl.checked;
+  localStorage.setItem(STORAGE_NOTIFY_EXIT_KEY, notifyOnExit ? "1" : "0");
+});
+
+chkNotifyBellEl.addEventListener("change", () => {
+  notifyOnBell = chkNotifyBellEl.checked;
+  localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, notifyOnBell ? "1" : "0");
+});
+
+document.getElementById("btn-notify-test")!.addEventListener("click", () => {
+  if (window.termdeckDesktop?.notify) {
+    window.termdeckDesktop.notify({
+      sessionId: activeSessionId || "",
+      title: "termdeck test notification",
+      body: "Notifications are working.",
+    });
+  } else if ("Notification" in window && Notification.permission === "granted") {
+    new Notification("termdeck test notification", { body: "Notifications are working." });
+  }
+});
+
 document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   uiFontSize = DEFAULT_UI_SIZE;
   sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+  notifyOnlyUnfocused = true;
+  notifyOnDecision = true;
+  notifyOnComplete = false;
+  notifyOnExit = false;
+  notifyOnBell = true;
   localStorage.setItem(STORAGE_UI_SIZE_KEY, String(uiFontSize));
   localStorage.setItem(STORAGE_SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+  localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, "1");
+  localStorage.setItem(STORAGE_NOTIFY_DECISION_KEY, "1");
+  localStorage.setItem(STORAGE_NOTIFY_COMPLETE_KEY, "0");
+  localStorage.setItem(STORAGE_NOTIFY_EXIT_KEY, "0");
+  localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, "1");
   setTerminalFontSize(DEFAULT_FONT_SIZE);
   applyAppearance();
 });
@@ -1160,32 +1272,8 @@ function syncNotifyBtn() {
   );
 }
 
-btnNotifyToggleEl.addEventListener("click", async () => {
-  if (window.termdeckDesktop?.notify) {
-    notifyEnabled = !notifyEnabled;
-    localStorage.setItem(STORAGE_NOTIFY_KEY, notifyEnabled ? "1" : "0");
-    syncNotifyBtn();
-    if (notifyEnabled) {
-      window.termdeckDesktop.notify({
-        sessionId: activeSessionId || "",
-        title: "termdeck notifications enabled",
-        body: "You'll be alerted whenever a session needs a decision.",
-      });
-    }
-    return;
-  }
-
-  if (!("Notification" in window)) return;
-  if (notifyEnabled && Notification.permission === "granted") {
-    notifyEnabled = false;
-    localStorage.setItem(STORAGE_NOTIFY_KEY, "0");
-    syncNotifyBtn();
-    return;
-  }
-  const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-  notifyEnabled = perm === "granted";
-  localStorage.setItem(STORAGE_NOTIFY_KEY, notifyEnabled ? "1" : "0");
-  syncNotifyBtn();
+btnNotifyToggleEl.addEventListener("click", () => {
+  void setNotificationsEnabled(!notifyEnabled, true);
 });
 
 // Boot

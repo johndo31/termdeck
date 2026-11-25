@@ -197,34 +197,102 @@
     </div>
 
     <div id="settings-backdrop" class="modal-backdrop hidden">
-      <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal modal-settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-header">
-          <h2 id="settings-title">Appearance</h2>
+          <h2 id="settings-title">Settings</h2>
           <button id="btn-settings-close" class="icon-btn" aria-label="Close">✕</button>
         </div>
-        <div class="modal-body">
-          <div class="setting-row">
-            <div class="setting-label">
-              <span>UI &amp; Sidebar Text Size</span>
-              <span id="val-ui-size" class="setting-value">14px</span>
+        <div class="modal-body settings-body">
+          <div class="settings-section">
+            <div class="settings-section-title">Appearance</div>
+            <div class="settings-card">
+              <div class="setting-row">
+                <div class="setting-label">
+                  <span>UI &amp; Sidebar Text Size</span>
+                  <span id="val-ui-size" class="setting-value">14px</span>
+                </div>
+                <input id="range-ui-size" type="range" min="12" max="18" step="1" value="14" />
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-label">
+                  <span>Terminal Font Size <span class="muted">(⌘+ / ⌘-)</span></span>
+                  <span id="val-term-size" class="setting-value">14px</span>
+                </div>
+                <input id="range-term-size" type="range" min="10" max="24" step="1" value="14" />
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-label">
+                  <span>Sidebar Width</span>
+                  <span id="val-sidebar-width" class="setting-value">248px</span>
+                </div>
+                <input id="range-sidebar-width" type="range" min="180" max="360" step="4" value="248" />
+              </div>
             </div>
-            <input id="range-ui-size" type="range" min="12" max="18" step="1" value="14" />
           </div>
 
-          <div class="setting-row">
-            <div class="setting-label">
-              <span>Terminal Font Size <span class="muted">(⌘+ / ⌘-)</span></span>
-              <span id="val-term-size" class="setting-value">14px</span>
+          <div class="settings-section">
+            <div class="settings-section-header">
+              <span class="settings-section-title">Notifications</span>
+              <button type="button" id="btn-notify-test" class="settings-link-btn">Send test</button>
             </div>
-            <input id="range-term-size" type="range" min="10" max="24" step="1" value="14" />
-          </div>
+            <div class="settings-card">
+              <label class="setting-toggle">
+                <span class="setting-toggle-text">
+                  <span>Desktop notifications</span>
+                  <span class="muted">Native macOS banners &amp; Dock bounce</span>
+                </span>
+                <input id="chk-notify-enabled" class="switch-input" type="checkbox" />
+              </label>
 
-          <div class="setting-row">
-            <div class="setting-label">
-              <span>Sidebar Width</span>
-              <span id="val-sidebar-width" class="setting-value">248px</span>
+              <div id="notify-subsettings" class="notify-subsettings">
+                <div class="setting-divider"></div>
+
+                <label class="setting-toggle">
+                  <span class="setting-toggle-text">
+                    <span>Only when unfocused</span>
+                    <span class="muted">Skip banners while termdeck is in front</span>
+                  </span>
+                  <input id="chk-notify-unfocused" class="switch-input" type="checkbox" checked />
+                </label>
+
+                <div class="setting-divider"></div>
+                <div class="settings-sublabel">Events</div>
+
+                <label class="setting-toggle">
+                  <span class="setting-toggle-text">
+                    <span>Needs decision / approval</span>
+                    <span class="muted">Permission prompts, (y/n), hooks</span>
+                  </span>
+                  <input id="chk-notify-decision" class="switch-input" type="checkbox" checked />
+                </label>
+
+                <label class="setting-toggle">
+                  <span class="setting-toggle-text">
+                    <span>Bot finishes turn</span>
+                    <span class="muted">When an agent goes working → ready</span>
+                  </span>
+                  <input id="chk-notify-complete" class="switch-input" type="checkbox" />
+                </label>
+
+                <label class="setting-toggle">
+                  <span class="setting-toggle-text">
+                    <span>Session exits</span>
+                    <span class="muted">When a process or bot terminates</span>
+                  </span>
+                  <input id="chk-notify-exit" class="switch-input" type="checkbox" />
+                </label>
+
+                <label class="setting-toggle">
+                  <span class="setting-toggle-text">
+                    <span>Terminal bell</span>
+                    <span class="muted">When a CLI rings the terminal bell</span>
+                  </span>
+                  <input id="chk-notify-bell" class="switch-input" type="checkbox" checked />
+                </label>
+              </div>
             </div>
-            <input id="range-sidebar-width" type="range" min="180" max="360" step="4" value="248" />
           </div>
 
           <div class="modal-footer">
