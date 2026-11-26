@@ -64,7 +64,8 @@ export const AGENT_PRESETS: Record<AgentKind, AgentPreset> = {
     cliBinary: "codex",
     accent: "#10b981",
     buildStartCommand: () => "codex",
-    buildResumeCommand: () => "codex resume --last",
+    buildResumeCommand: (s) =>
+      s.externalSessionId ? `codex resume ${shellQuote(s.externalSessionId)}` : "codex resume --last",
   },
   gemini: {
     id: "gemini",

@@ -7,7 +7,7 @@ A minimal, zero-injection desktop and web UI for your local and remote coding ag
 ## Features
 
 - **Zero prompt/tool injection** — runs real `claude`, `agy` (Antigravity), `codex`, `gemini`, or plain `$SHELL` inside a real PTY with clickable URL & OSC 8 `file://` links.
-- **Always resuming** — remembers every session's directory, host, agent, and UUID in `~/.termdeck/sessions.json` and auto-discovers existing Claude / Antigravity conversations in a folder.
+- **Always resuming** — remembers every session's directory, host, agent, and UUID in `~/.termdeck/sessions.json` and auto-discovers existing Claude, Antigravity, and Codex conversations in a folder.
   - Uses `tmux -L termdeck` automatically when `tmux` is installed (locally or on remote SSH hosts) so sessions survive restarts and network drops.
   - Works out of the box without `tmux` via Bun's native PTY + scrollback replay + native CLI `--resume` / `--continue` flags.
 - **Clean sidebar & compact header** — sessions grouped by project with agent icons, live `Working` / `Decision` indicators, git branch pill, inline rename, `+ Shell` companion button, `⌘K` quick launcher, and `⌘,` settings (persisted in `~/.termdeck/config.json`).
