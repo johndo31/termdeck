@@ -10,7 +10,7 @@ A minimal, zero-injection desktop and web UI for your local and remote coding ag
 - **Always resuming** — remembers every session's directory, host, agent, and UUID in `~/.termdeck/sessions.json` and auto-discovers existing Claude, Antigravity, and Codex conversations in a folder.
   - Uses `tmux -L termdeck` automatically when `tmux` is installed (locally or on remote SSH hosts) so sessions survive restarts and network drops.
   - Works out of the box without `tmux` via Bun's native PTY + scrollback replay + native CLI `--resume` / `--continue` flags.
-- **Clean sidebar & compact header** — sessions grouped by project with agent icons, live `Working` / `Decision` indicators, git branch pill, inline rename, `+ Shell` companion button, `⌘K` quick launcher, and `⌘,` settings (persisted in `~/.termdeck/config.json`).
+- **Clean sidebar & compact header** — sessions grouped by project with agent icons, live `Working` / `Done` / `Decision` indicators, git branch pill, inline rename, `+ Shell` companion button, `⌘K` quick launcher, and `⌘,` settings (persisted in `~/.termdeck/config.json`).
 - **Native macOS notifications** — independent toggles for desktop banners, Dock icon badge count, and Dock bounce, plus per-event controls (permission/decision prompts, finished turns, session exits, terminal bell) and an optional `/api/hooks/:id` webhook endpoint.
 - **Remote over SSH, VPN mobile UI, & thin-client mode** — auto-discovers hosts from `~/.ssh/config`, includes a live-toggleable **Remote / VPN Access** listener with token auth, mobile slide-over drawer + touch quick-key bar, and lets your MacBook desktop app connect directly to an always-on Mac mini / server.
 
@@ -100,12 +100,16 @@ To run agents directly on remote machines from your local `termdeck`:
 `termdeck` automatically detects permission/decision prompts and turn completion from PTY output. For 100% deterministic alerts with zero false positives, every spawned session receives `TERMDECK_URL` and `TERMDECK_SESSION_ID` in its environment so CLI hooks (e.g. Claude Code's `PermissionRequest`, `Notification`, or `Stop` hooks) can POST directly:
 
 ```bash
+# Signal a permission prompt
 curl -s -X POST "$TERMDECK_URL/api/hooks/$TERMDECK_SESSION_ID" \
   -H 'content-type: application/json' \
   -d '{"event":"permission","message":"Approve Bash"}'
+
+# Open a URL on the connected MacBook (or show a tap-to-open toast on phone/iPad)
+"$BROWSER" "https://example.com"
 ```
 
-Supported events: `permission` / `decision`, `notification`, `working`, `stop` / `idle`, and `open_url` (with `"url": "https://..."`). Every session also sets `BROWSER` to `scripts/termdeck-open`, so CLIs that open URLs via `$BROWSER` automatically open on your MacBook (or show a tap-to-open toast on phone/iPad, toggleable in Settings).
+Supported events: `permission` / `decision`, `notification`, `working`, `stop` / `idle`, and `open_url` (with `"url": "https://..."`). Every session sets `BROWSER` to `scripts/termdeck-open`, toggleable in **Settings → Allow agents to open URLs**.
 
 ---
 
