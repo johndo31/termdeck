@@ -136,6 +136,7 @@ let discoveredForCwd: DiscoveredSession[] = [];
 let selectedDiscoveredId: string | null = null;
 let discoverTimer: ReturnType<typeof setTimeout> | null = null;
 const unreadSessionIds = new Set<string>();
+const finishedSessionIds = new Set<string>();
 const workingSince = new Map<string, number>();
 const mounted = new Map<string, MountedTerminal>();
 
@@ -452,19 +453,24 @@ function renderSidebar() {
 
       const hostBadge = s.host !== "local" ? `<span class="host-tag">${escapeHtml(s.host)}</span>` : "";
       const agentLabel = AGENT_META.find((a) => a.id === s.agent)?.label ?? s.agent;
+      const isFinished = s.status === "idle" && finishedSessionIds.has(s.id);
       const subText =
         s.status === "needs_input"
           ? s.statusDetail || "Needs decision"
           : s.status === "working"
             ? s.statusDetail || "Working…"
-            : agentLabel;
+            : isFinished
+              ? "Finished"
+              : agentLabel;
 
       const rightIndicator =
         s.status === "needs_input"
           ? `<span class="session-badge needs_input" title="${escapeAttr(s.statusDetail || "Needs decision")}">Decision</span>`
-          : s.status === "working"
-            ? `<span class="status-dot working" title="${escapeAttr(s.statusDetail || "Working…")}"></span>`
-            : `<span class="status-dot ${s.status}" title="${escapeAttr(s.status)}"></span>`;
+          : isFinished
+            ? `<span class="session-badge done" title="Finished turn">Done</span>`
+            : s.status === "working"
+              ? `<span class="status-dot working" title="${escapeAttr(s.statusDetail || "Working…")}"></span>`
+              : `<span class="status-dot ${s.status}" title="${escapeAttr(s.status)}"></span>`;
 
       btn.innerHTML = `
         <span class="session-icon">${agentIconSvg(s.agent, 15)}</span>
@@ -525,6 +531,7 @@ function renderHeader() {
 function selectSession(id: string) {
   activeSessionId = id;
   unreadSessionIds.delete(id);
+  finishedSessionIds.delete(id);
   localStorage.setItem(STORAGE_ACTIVE_KEY, id);
   persistPrefs();
   emptyStateEl.classList.add("hidden");
@@ -786,12 +793,15 @@ function updateSessionRowInPlace(s: SessionView): boolean {
 
   const hostBadge = s.host !== "local" ? `<span class="host-tag">${escapeHtml(s.host)}</span>` : "";
   const agentLabel = AGENT_META.find((a) => a.id === s.agent)?.label ?? s.agent;
+  const isFinished = s.status === "idle" && finishedSessionIds.has(s.id);
   const subText =
     s.status === "needs_input"
       ? s.statusDetail || "Needs decision"
       : s.status === "working"
         ? s.statusDetail || "Working…"
-        : agentLabel;
+        : isFinished
+          ? "Finished"
+          : agentLabel;
 
   const subEl = btn.querySelector(".session-sub");
   if (subEl) {
@@ -803,9 +813,11 @@ function updateSessionRowInPlace(s: SessionView): boolean {
     rightEl.innerHTML =
       s.status === "needs_input"
         ? `<span class="session-badge needs_input" title="${escapeAttr(s.statusDetail || "Needs decision")}">Decision</span>`
-        : s.status === "working"
-          ? `<span class="status-dot working" title="${escapeAttr(s.statusDetail || "Working…")}"></span>`
-          : `<span class="status-dot ${s.status}" title="${escapeAttr(s.status)}"></span>`;
+        : isFinished
+          ? `<span class="session-badge done" title="Finished turn">Done</span>`
+          : s.status === "working"
+            ? `<span class="status-dot working" title="${escapeAttr(s.statusDetail || "Working…")}"></span>`
+            : `<span class="status-dot ${s.status}" title="${escapeAttr(s.status)}"></span>`;
   }
 
   return true;
@@ -825,20 +837,29 @@ function updateSessionStatus(
   if (backend) s.backend = backend;
 
   if (status === "working" && prevStatus !== "working") {
+    finishedSessionIds.delete(sessionId);
     workingSince.set(sessionId, Date.now());
   }
 
   if (notifyOnDecision && status === "needs_input" && prevStatus !== "needs_input") {
     workingSince.delete(sessionId);
+    finishedSessionIds.delete(sessionId);
     maybeNotifyDecision(s, statusDetail);
-  } else if (notifyOnComplete && status === "idle" && prevStatus === "working" && s.agent !== "shell") {
+  } else if (status === "idle" && prevStatus === "working" && s.agent !== "shell") {
     const started = workingSince.get(sessionId) ?? 0;
     workingSince.delete(sessionId);
     if (started > 0 && Date.now() - started >= 1500) {
-      maybeNotifyDecision(s, "Finished turn");
+      const viewingThis = document.hasFocus() && document.visibilityState === "visible" && sessionId === activeSessionId;
+      if (!viewingThis) {
+        finishedSessionIds.add(sessionId);
+      }
+      if (notifyOnComplete) {
+        maybeNotifyDecision(s, "Finished turn");
+      }
     }
   } else if (notifyOnExit && status === "exited" && prevStatus !== "exited") {
     workingSince.delete(sessionId);
+    finishedSessionIds.delete(sessionId);
     maybeNotifyDecision(s, statusDetail || "Session exited");
   } else if (status !== "working") {
     workingSince.delete(sessionId);
@@ -1625,8 +1646,10 @@ sidebarResizerEl.addEventListener("mousedown", (e) => {
 
 window.addEventListener("focus", () => {
   if (activeSessionId) {
-    if (unreadSessionIds.delete(activeSessionId)) {
-      updateDocumentTitle();
+    const clearedUnread = unreadSessionIds.delete(activeSessionId);
+    const clearedDone = finishedSessionIds.delete(activeSessionId);
+    if (clearedUnread || clearedDone) {
+      renderSidebar();
     }
     // Re-sync PTY size on desktop focus in case a phone client resized it
     const m = mounted.get(activeSessionId);

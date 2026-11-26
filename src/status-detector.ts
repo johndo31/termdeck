@@ -173,10 +173,16 @@ export class SessionStatusDetector {
       this.cleanTail = (this.cleanTail + clean).slice(-MAX_TAIL_CHARS);
     }
 
-    // Immediate OSC notification => needs_input
+    // Immediate OSC notification: only classify as needs_input if it mentions approval/decision/input;
+    // otherwise treat as a turn-finished completion signal (idle).
     if (oscNotification) {
       this.clearTimers();
-      this.setState("needs_input", oscNotification, true);
+      if (/permission|approv|decision|confirm|waiting|input|question/i.test(oscNotification)) {
+        this.setState("needs_input", oscNotification, true);
+      } else {
+        this.hasPendingTurn = false;
+        this.setState("idle", "Ready", true);
+      }
       return;
     }
 
@@ -269,10 +275,11 @@ export class SessionStatusDetector {
       return;
     }
 
-    // If a standalone bell rang and output stopped, treat as needing attention
+    // A plain bell without a decision prompt usually signals turn completion, not a blocking decision
     if (hadBell && this.agent !== "shell") {
+      this.hasPendingTurn = false;
       this.clearTimers();
-      this.setState("needs_input", "Needs attention", true);
+      this.setState("idle", "Ready", true);
     }
   }
 
