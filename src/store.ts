@@ -136,6 +136,7 @@ export function deriveProjectName(cwd: string): string {
 
 export function createSessionRecord(params: {
   title?: string;
+  project?: string;
   cwd: string;
   host?: string;
   agent: AgentKind;
@@ -145,7 +146,7 @@ export function createSessionRecord(params: {
 }): SessionRecord {
   const host = (params.host || "local").trim() || "local";
   const cwd = host === "local" ? resolve(expandTilde(params.cwd.trim() || homedir())) : (params.cwd.trim() || "~");
-  const project = deriveProjectName(cwd);
+  const project = params.project?.trim() || deriveProjectName(cwd);
   const now = new Date().toISOString();
   const shortId = crypto.randomUUID().slice(0, 8);
   const defaultTitle = params.title?.trim() || `${project}`;

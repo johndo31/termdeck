@@ -333,6 +333,7 @@ function createServerHandlers(isRemoteListener: boolean) {
     if (pathname === "/api/sessions" && req.method === "POST") {
       const body = (await req.json()) as {
         title?: string;
+        project?: string;
         cwd?: string;
         host?: string;
         agent?: AgentKind;
@@ -348,6 +349,7 @@ function createServerHandlers(isRemoteListener: boolean) {
 
       const record = createSessionRecord({
         title: body.title,
+        project: body.project,
         cwd: body.cwd || homedir(),
         host: body.host || "local",
         agent,
@@ -369,9 +371,17 @@ function createServerHandlers(isRemoteListener: boolean) {
       if (idx === -1) return json({ error: "Not found" }, 404);
 
       if (req.method === "PATCH") {
-        const body = (await req.json()) as { title?: string };
+        const body = (await req.json()) as { title?: string; project?: string };
+        let changed = false;
         if (typeof body.title === "string" && body.title.trim()) {
           sessions[idx].title = body.title.trim();
+          changed = true;
+        }
+        if (typeof body.project === "string" && body.project.trim()) {
+          sessions[idx].project = body.project.trim();
+          changed = true;
+        }
+        if (changed) {
           saveSessions(sessions);
           ptyManager.broadcastEvent({ type: "sessions_changed" });
         }

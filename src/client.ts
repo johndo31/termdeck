@@ -204,7 +204,7 @@ const headerEmptyTitleEl = document.getElementById("header-empty-title")!;
 const headerActionsEl = document.getElementById("header-actions")!;
 const headerAgentIconEl = document.getElementById("header-agent-icon")!;
 const headerTitleInputEl = document.getElementById("header-title-input") as HTMLInputElement;
-const headerProjectEl = document.getElementById("header-project")!;
+const headerProjectEl = document.getElementById("header-project") as HTMLInputElement;
 const headerBranchEl = document.getElementById("header-branch")!;
 const headerHostEl = document.getElementById("header-host")!;
 const headerStatusEl = document.getElementById("header-status")!;
@@ -218,6 +218,8 @@ const newSessionFormEl = document.getElementById("new-session-form") as HTMLForm
 const inputHostEl = document.getElementById("input-host") as HTMLInputElement;
 const hostOptionsEl = document.getElementById("host-options")!;
 const inputTitleEl = document.getElementById("input-title") as HTMLInputElement;
+const inputProjectEl = document.getElementById("input-project") as HTMLInputElement;
+const categoryOptionsEl = document.getElementById("category-options")!;
 const inputCwdEl = document.getElementById("input-cwd") as HTMLInputElement;
 const btnPickFolderEl = document.getElementById("btn-pick-folder") as HTMLButtonElement;
 const projectOptionsEl = document.getElementById("project-options")!;
@@ -442,6 +444,11 @@ function renderSidebar() {
     groups.set(s.project, list);
   }
 
+  // Sync category autocomplete datalist
+  categoryOptionsEl.innerHTML = Array.from(groups.keys())
+    .map((p) => `<option value="${escapeAttr(p)}"></option>`)
+    .join("");
+
   const fragment = document.createDocumentFragment();
   for (const [project, items] of groups) {
     const groupEl = document.createElement("div");
@@ -451,7 +458,53 @@ function renderSidebar() {
     groupHeader.className = "project-group-header";
 
     const label = document.createElement("span");
+    label.className = "project-group-label";
     label.textContent = project;
+    label.title = "Click to rename category";
+    label.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "project-group-input";
+      input.value = project;
+      input.spellcheck = false;
+      let done = false;
+      const finish = async (commit: boolean) => {
+        if (done) return;
+        done = true;
+        const next = input.value.trim();
+        if (commit && next && next !== project) {
+          const toUpdate = sessions.filter((s) => s.project === project);
+          for (const s of toUpdate) s.project = next;
+          renderSidebar();
+          renderHeader();
+          await Promise.all(
+            toUpdate.map((s) =>
+              fetch(`/api/sessions/${encodeURIComponent(s.id)}`, {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ project: next }),
+              })
+            )
+          );
+        } else {
+          renderSidebar();
+        }
+      };
+      input.addEventListener("blur", () => void finish(true));
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          void finish(true);
+        } else if (ev.key === "Escape") {
+          ev.preventDefault();
+          void finish(false);
+        }
+      });
+      label.replaceWith(input);
+      input.focus();
+      input.select();
+    });
 
     const addBtn = document.createElement("button");
     addBtn.className = "project-group-add";
@@ -459,7 +512,7 @@ function renderSidebar() {
     addBtn.textContent = "+";
     addBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      openModal({ cwd: items[0].cwd, host: items[0].host });
+      openModal({ cwd: items[0].cwd, host: items[0].host, project });
     });
 
     groupHeader.append(label, addBtn);
@@ -533,8 +586,10 @@ function renderHeader() {
   if (document.activeElement !== headerTitleInputEl) {
     headerTitleInputEl.value = s.title;
   }
-  headerProjectEl.textContent = s.project;
-  headerProjectEl.title = s.cwd;
+  if (document.activeElement !== headerProjectEl) {
+    headerProjectEl.value = s.project;
+  }
+  headerProjectEl.title = `${s.cwd} — Click to change category`;
 
   if (s.gitBranch) {
     headerBranchEl.textContent = s.gitBranch;
@@ -1099,12 +1154,22 @@ function renderQuickProjects() {
   }
 }
 
-function openModal(prefill?: { cwd?: string; host?: string; agent?: AgentKind }) {
+function folderBasename(p: string): string {
+  const cleaned = p.replace(/\/+$/, "");
+  if (!cleaned || cleaned === "~") return "home";
+  const idx = cleaned.lastIndexOf("/");
+  return idx >= 0 ? cleaned.slice(idx + 1) || cleaned : cleaned;
+}
+
+function openModal(prefill?: { cwd?: string; host?: string; agent?: AgentKind; project?: string }) {
   if (prefill?.agent) selectedModalAgent = prefill.agent;
   renderAgentPicker();
   inputHostEl.value = prefill?.host || "local";
-  inputCwdEl.value = prefill?.cwd || meta.projects[0]?.path || meta.homeDir;
+  const cwd = prefill?.cwd || meta.projects[0]?.path || meta.homeDir;
+  inputCwdEl.value = cwd;
   inputTitleEl.value = "";
+  inputProjectEl.value =
+    prefill?.project && prefill.project !== folderBasename(cwd) ? prefill.project : "";
   inputCustomCmdEl.value = "";
   inputCustomResumeEl.value = "";
   discoveredForCwd = [];
@@ -1159,6 +1224,7 @@ newSessionFormEl.addEventListener("submit", async (e) => {
     host: inputHostEl.value.trim() || "local",
     cwd: inputCwdEl.value.trim() || meta.homeDir,
     title: inputTitleEl.value.trim() || chosenDiscovered?.title || undefined,
+    project: inputProjectEl.value.trim() || undefined,
     resumeSessionId: chosenDiscovered?.sessionId || undefined,
     customCommand: inputCustomCmdEl.value.trim() || undefined,
     customResumeCommand: inputCustomResumeEl.value.trim() || undefined,
@@ -1251,6 +1317,39 @@ headerTitleInputEl.addEventListener("keydown", (e) => {
   }
 });
 
+async function commitProjectRename() {
+  if (!activeSessionId) return;
+  const s = sessions.find((x) => x.id === activeSessionId);
+  if (!s) return;
+  const next = headerProjectEl.value.trim();
+  if (!next) {
+    headerProjectEl.value = s.project;
+    return;
+  }
+  if (s.project === next) return;
+  s.project = next;
+  renderSidebar();
+  renderHeader();
+  await fetch(`/api/sessions/${encodeURIComponent(activeSessionId)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ project: next }),
+  });
+}
+
+headerProjectEl.addEventListener("blur", () => void commitProjectRename());
+headerProjectEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    headerProjectEl.blur();
+    if (activeSessionId) mounted.get(activeSessionId)?.term.focus();
+  } else if (e.key === "Escape") {
+    const s = sessions.find((x) => x.id === activeSessionId);
+    if (s) headerProjectEl.value = s.project;
+    headerProjectEl.blur();
+    if (activeSessionId) mounted.get(activeSessionId)?.term.focus();
+  }
+});
+
 document.getElementById("btn-spawn-shell")!.addEventListener("click", async () => {
   const current = sessions.find((x) => x.id === activeSessionId);
   if (!current) return;
@@ -1261,6 +1360,7 @@ document.getElementById("btn-spawn-shell")!.addEventListener("click", async () =
       agent: "shell",
       host: current.host,
       cwd: current.cwd,
+      project: current.project,
       title: `${current.project} shell`,
     }),
   });

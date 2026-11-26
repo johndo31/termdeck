@@ -10,7 +10,7 @@ A minimal, zero-injection desktop and web UI for your local and remote coding ag
 - **Always resuming** — remembers every session's directory, host, agent, and UUID in `~/.termdeck/sessions.json` and auto-discovers existing Claude, Antigravity, and Codex conversations in a folder.
   - Uses `tmux -L termdeck` automatically when `tmux` is installed (locally or on remote SSH hosts) so sessions survive restarts and network drops.
   - Works out of the box without `tmux` via Bun's native PTY + scrollback replay + native CLI `--resume` / `--continue` flags.
-- **Clean sidebar & compact header** — sessions grouped by project with agent icons, live `Working` / `Done` / `Decision` indicators, git branch pill, inline rename, `+ Shell` companion button, `⌘K` quick launcher, and `⌘,` settings (persisted in `~/.termdeck/config.json`).
+- **Clean sidebar & compact header** — sessions grouped by project or custom category with agent icons, live `Working` / `Done` / `Decision` indicators, git branch pill, inline title & category rename, `+ Shell` companion button, `⌘K` quick launcher, and `⌘,` settings (persisted in `~/.termdeck/config.json`).
 - **Native macOS notifications** — independent toggles for desktop banners, Dock icon badge count, and Dock bounce, plus per-event controls (permission/decision prompts, finished turns, session exits, terminal bell) and an optional `/api/hooks/:id` webhook endpoint.
 - **Remote over SSH, VPN mobile UI, & thin-client mode** — auto-discovers hosts from `~/.ssh/config`, includes a live-toggleable **Remote / VPN Access** listener with token auth, mobile slide-over drawer + touch quick-key bar, and lets your MacBook desktop app connect directly to an always-on Mac mini / server.
 

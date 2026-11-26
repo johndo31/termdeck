@@ -209,12 +209,45 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
   padding: 4px 8px;
   color: #9ba8be;
   font-size: 0.8em;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.project-group-label {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: -4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.project-group-label:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.project-group-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 1em;
+  font-weight: 600;
+  padding: 1px 5px;
+  margin-left: -4px;
+  outline: none;
 }
 
 .project-group-add {
@@ -582,6 +615,33 @@ body {
 
 .header-sep {
   color: var(--text-dim);
+}
+
+.header-project-input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 2px 9px;
+  min-width: 56px;
+  max-width: 150px;
+  width: 96px;
+  flex: 0 1 110px;
+  outline: none;
+  text-overflow: ellipsis;
+  transition: border-color 100ms ease, color 100ms ease, background 100ms ease;
+}
+
+.header-project-input:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.header-project-input:focus {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .header-empty-title {
