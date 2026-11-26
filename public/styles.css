@@ -1431,6 +1431,27 @@ body.desktop-mac .term-header input {
   line-height: 1.4;
 }
 
+.desktop-target-input {
+  height: 32px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-header);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.desktop-target-input:focus {
+  border-color: var(--accent);
+}
+
+.desktop-target-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 /* Mobile drawer backdrop & touch quick-key bar */
 .sidebar-backdrop {
   position: fixed;

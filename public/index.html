@@ -370,6 +370,26 @@
             </div>
           </div>
 
+          <div id="desktop-target-section" class="settings-section hidden">
+            <div class="settings-section-header">
+              <span class="settings-section-title">Desktop Server</span>
+              <span id="desktop-target-badge" class="remote-status-badge">Local</span>
+            </div>
+            <div class="settings-card">
+              <div class="setting-row">
+                <div class="setting-label">
+                  <span>Connect to remote termdeck</span>
+                </div>
+                <span class="muted" style="font-size: 0.78em; margin-top: -3px;">Paste the URL from an always-on Mac mini / server to use this app as a thin client.</span>
+                <input id="input-desktop-target" class="desktop-target-input" type="text" placeholder="http://mac-mini:3434/?token=..." autocomplete="off" />
+                <div class="desktop-target-actions">
+                  <button type="button" id="btn-desktop-connect" class="header-btn">Connect</button>
+                  <button type="button" id="btn-desktop-local" class="header-btn">Use Local</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="modal-footer">
             <button type="button" id="btn-settings-reset" class="header-btn">Reset Defaults</button>
             <button type="button" id="btn-settings-done" class="btn-primary">Done</button>

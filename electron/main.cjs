@@ -1,14 +1,52 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, Notification, screen, shell } = require("electron");
 const { spawn } = require("node:child_process");
-const { existsSync } = require("node:fs");
+const { existsSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const { homedir } = require("node:os");
 const path = require("node:path");
 
 const APP_ROOT = path.resolve(__dirname, "..");
+const DESKTOP_CONFIG_PATH = path.join(homedir(), ".termdeck", "desktop.json");
 
 let mainWindow = null;
 let serverProc = null;
 let serverUrl = null;
+let activeMode = "local";
+
+function readDesktopConfig() {
+  try {
+    if (!existsSync(DESKTOP_CONFIG_PATH)) return { remoteServerUrl: "" };
+    const parsed = JSON.parse(readFileSync(DESKTOP_CONFIG_PATH, "utf8"));
+    return {
+      remoteServerUrl: typeof parsed?.remoteServerUrl === "string" ? parsed.remoteServerUrl.trim() : "",
+    };
+  } catch {
+    return { remoteServerUrl: "" };
+  }
+}
+
+function writeDesktopConfig(next) {
+  const dir = path.dirname(DESKTOP_CONFIG_PATH);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(DESKTOP_CONFIG_PATH, JSON.stringify({ remoteServerUrl: next.remoteServerUrl || "" }, null, 2), "utf8");
+}
+
+function stopBackendServer() {
+  if (serverProc && !serverProc.killed) {
+    serverProc.kill("SIGTERM");
+  }
+  serverProc = null;
+}
+
+function normalizeServerUrl(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  const withProto = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+  const parsed = new URL(withProto);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("URL must use http:// or https://");
+  }
+  return parsed.toString();
+}
 
 function resolveBunBinary() {
   const candidates = [
@@ -164,6 +202,13 @@ function buildAppMenu() {
           click: () => sendZoom(0),
         },
         { type: "separator" },
+        {
+          label: "Switch to Local Server",
+          click: () => {
+            void switchToTargetUrl("");
+          },
+        },
+        { type: "separator" },
         { role: "reload" },
         { role: "toggleDevTools" },
         { type: "separator" },
@@ -212,6 +257,31 @@ function createWindow(url) {
       void shell.openExternal(targetUrl);
     }
     return { action: "deny" };
+  });
+
+  // Show a clean recovery page if a remote Mac mini / VPN server is unreachable
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDesc, validatedUrl, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3 || activeMode !== "remote") return;
+    const safeUrl = String(validatedUrl || "").replace(/[<>&"]/g, "");
+    const safeErr = String(errorDesc || "Connection failed").replace(/[<>&"]/g, "");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+      body{margin:0;height:100vh;background:#0b0d11;color:#f0f4fa;font-family:"SF Mono",Menlo,monospace;display:flex;align-items:center;justify-content:center;padding:24px;}
+      .card{max-width:440px;background:#12161d;border:1px solid #2d3546;border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:12px;}
+      h1{margin:0;font-size:15px;} p{margin:0;font-size:12.5px;color:#95a2b8;line-height:1.5;word-break:break-all;}
+      .row{display:flex;gap:8px;margin-top:6px;}
+      button{height:34px;padding:0 14px;border-radius:7px;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;}
+      .primary{border:none;background:#6c8cff;color:#090b10;}
+      .secondary{border:1px solid #2d3546;background:#171c25;color:#f0f4fa;}
+    </style></head><body><div class="card">
+      <h1>Could not reach remote termdeck</h1>
+      <p>${safeUrl}<br/>${safeErr}</p>
+      <p>Check that your VPN is connected and termdeck is running on the remote machine.</p>
+      <div class="row">
+        <button class="primary" onclick="location.href=decodeURIComponent('${encodeURIComponent(serverUrl || "")}')">Retry</button>
+        <button class="secondary" onclick="window.termdeckDesktop?.setServerTarget('')">Switch to Local</button>
+      </div>
+    </div></body></html>`;
+    mainWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
   });
 
   mainWindow.loadURL(url);
@@ -306,13 +376,56 @@ ipcMain.handle("termdeck:pick-folder", async (_event, defaultPath) => {
   return result.filePaths[0];
 });
 
+async function switchToTargetUrl(rawUrl) {
+  const normalized = normalizeServerUrl(rawUrl);
+  writeDesktopConfig({ remoteServerUrl: normalized });
+
+  if (normalized) {
+    stopBackendServer();
+    activeMode = "remote";
+    serverUrl = normalized;
+  } else {
+    if (!serverProc || serverProc.killed) {
+      serverUrl = await startBackendServer();
+    }
+    activeMode = "local";
+  }
+
+  if (mainWindow) {
+    mainWindow.loadURL(serverUrl);
+  } else {
+    createWindow(serverUrl);
+  }
+  return { mode: activeMode, remoteServerUrl: normalized };
+}
+
+ipcMain.handle("termdeck:get-server-target", () => {
+  const cfg = readDesktopConfig();
+  return {
+    mode: activeMode,
+    remoteServerUrl: process.env.TERMDECK_SERVER_URL || cfg.remoteServerUrl || "",
+  };
+});
+
+ipcMain.handle("termdeck:set-server-target", async (_event, rawUrl) => {
+  return switchToTargetUrl(rawUrl);
+});
+
 app.setName("termdeck");
 
 app.whenReady().then(async () => {
   buildAppMenu();
   try {
-    const url = await startBackendServer();
-    createWindow(url);
+    const cfg = readDesktopConfig();
+    const configuredRemote = (process.env.TERMDECK_SERVER_URL || cfg.remoteServerUrl || "").trim();
+    if (configuredRemote) {
+      activeMode = "remote";
+      serverUrl = normalizeServerUrl(configuredRemote);
+    } else {
+      activeMode = "local";
+      serverUrl = await startBackendServer();
+    }
+    createWindow(serverUrl);
   } catch (err) {
     console.error("Failed to start termdeck:", err);
     app.quit();
@@ -332,8 +445,5 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  if (serverProc && !serverProc.killed) {
-    serverProc.kill("SIGTERM");
-    serverProc = null;
-  }
+  stopBackendServer();
 });

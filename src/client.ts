@@ -14,6 +14,8 @@ declare global {
       notify?: (payload: { sessionId: string; title: string; body: string; banner?: boolean; bounce?: boolean }) => void;
       onSelectSession?: (cb: (sessionId: string) => void) => void;
       onFontZoom?: (cb: (delta: number) => void) => void;
+      getServerTarget?: () => Promise<{ mode: "local" | "remote"; remoteServerUrl: string }>;
+      setServerTarget?: (url: string) => Promise<{ mode: "local" | "remote"; remoteServerUrl: string }>;
     };
   }
 }
@@ -176,6 +178,11 @@ const inputRemotePortEl = document.getElementById("input-remote-port") as HTMLIn
 const btnRotateTokenEl = document.getElementById("btn-rotate-token") as HTMLButtonElement;
 const remoteUrlsListEl = document.getElementById("remote-urls-list")!;
 const remoteRestartNoteEl = document.getElementById("remote-restart-note")!;
+const desktopTargetSectionEl = document.getElementById("desktop-target-section")!;
+const desktopTargetBadgeEl = document.getElementById("desktop-target-badge")!;
+const inputDesktopTargetEl = document.getElementById("input-desktop-target") as HTMLInputElement;
+const btnDesktopConnectEl = document.getElementById("btn-desktop-connect") as HTMLButtonElement;
+const btnDesktopLocalEl = document.getElementById("btn-desktop-local") as HTMLButtonElement;
 const headerSessionInfoEl = document.getElementById("header-session-info")!;
 const headerEmptyTitleEl = document.getElementById("header-empty-title")!;
 const headerActionsEl = document.getElementById("header-actions")!;
@@ -1406,9 +1413,38 @@ btnRotateTokenEl.addEventListener("click", () => {
   void patchRemoteConfig({ regenerateToken: true });
 });
 
+async function syncDesktopServerTarget() {
+  if (!window.termdeckDesktop?.getServerTarget) return;
+  desktopTargetSectionEl.classList.remove("hidden");
+  try {
+    const info = await window.termdeckDesktop.getServerTarget();
+    inputDesktopTargetEl.value = info.remoteServerUrl || "";
+    desktopTargetBadgeEl.textContent = info.mode === "remote" ? "Remote" : "Local";
+    desktopTargetBadgeEl.classList.toggle("active", info.mode === "remote");
+  } catch {
+    // ignore
+  }
+}
+
+btnDesktopConnectEl.addEventListener("click", async () => {
+  const url = inputDesktopTargetEl.value.trim();
+  if (!url || !window.termdeckDesktop?.setServerTarget) return;
+  try {
+    await window.termdeckDesktop.setServerTarget(url);
+  } catch {
+    // ignore invalid URL
+  }
+});
+
+btnDesktopLocalEl.addEventListener("click", async () => {
+  if (!window.termdeckDesktop?.setServerTarget) return;
+  await window.termdeckDesktop.setServerTarget("");
+});
+
 function openSettingsModal() {
   applyAppearance();
   void fetchRemoteConfig();
+  void syncDesktopServerTarget();
   settingsBackdropEl.classList.remove("hidden");
 }
 

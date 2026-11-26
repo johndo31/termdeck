@@ -21,4 +21,10 @@ contextBridge.exposeInMainWorld("termdeckDesktop", {
   onFontZoom(callback) {
     ipcRenderer.on("termdeck:font-zoom", (_event, delta) => callback(delta));
   },
+  getServerTarget() {
+    return ipcRenderer.invoke("termdeck:get-server-target");
+  },
+  setServerTarget(url) {
+    return ipcRenderer.invoke("termdeck:set-server-target", String(url || ""));
+  },
 });
