@@ -43,6 +43,7 @@ interface MountedTerminal {
   fit: FitAddon;
   ws: WebSocket | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
+  pinBottomUntil: number;
   disposed: boolean;
 }
 
@@ -639,6 +640,7 @@ function mountTerminal(sessionId: string): MountedTerminal {
     fit,
     ws: null,
     reconnectTimer: null,
+    pinBottomUntil: Date.now() + 3500,
     disposed: false,
   };
 
@@ -667,16 +669,22 @@ function connectTerminalWs(entry: MountedTerminal) {
   );
   entry.ws = ws;
 
-  // Keep viewport pinned to bottom during initial replay & CLI startup/history load
+  // Keep viewport pinned to bottom during initial startup/replay or right after a resize
   // unless the user manually scrolls up.
-  const connectedAt = Date.now();
   let userScrolledUp = false;
   const onWheel = (ev: WheelEvent) => {
-    if (ev.deltaY < 0) userScrolledUp = true;
+    if (ev.deltaY < 0) {
+      userScrolledUp = true;
+      entry.pinBottomUntil = 0;
+    } else if (ev.deltaY > 0) {
+      const buf = entry.term.buffer.active;
+      if (buf.baseY - buf.viewportY <= 2) userScrolledUp = false;
+    }
   };
   entry.el.addEventListener("wheel", onWheel, { passive: true });
 
   ws.addEventListener("open", () => {
+    entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + 3500);
     fitAndSync(entry);
   });
 
@@ -695,7 +703,7 @@ function connectTerminalWs(entry: MountedTerminal) {
           };
 
       if (msg.type === "data") {
-        const shouldPinBottom = !userScrolledUp && Date.now() - connectedAt < 3500;
+        const shouldPinBottom = !userScrolledUp && Date.now() < entry.pinBottomUntil;
         if (shouldPinBottom) {
           entry.term.write(msg.data, () => {
             if (!userScrolledUp) entry.term.scrollToBottom();
@@ -739,7 +747,10 @@ function fitAndSync(entry: MountedTerminal) {
   if (!entry.el.classList.contains("active")) return;
   try {
     const buf = entry.term.buffer.active;
-    const wasNearBottom = buf.baseY - buf.viewportY <= 2;
+    const wasNearBottom = buf.baseY - buf.viewportY <= 3;
+    if (wasNearBottom) {
+      entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + 650);
+    }
     entry.fit.fit();
     const { cols, rows } = entry.term;
     if (cols > 0 && rows > 0 && entry.ws?.readyState === WebSocket.OPEN) {
@@ -1308,11 +1319,16 @@ btnDeleteConfirmEl.addEventListener("click", async () => {
   }
 });
 
-// Resize observer for terminal stage
+// Debounced resize observer so CSS sidebar transitions send a single clean SIGWINCH
+let resizeSyncTimer: ReturnType<typeof setTimeout> | null = null;
 const ro = new ResizeObserver(() => {
-  if (!activeSessionId) return;
-  const m = mounted.get(activeSessionId);
-  if (m) fitAndSync(m);
+  if (resizeSyncTimer) clearTimeout(resizeSyncTimer);
+  resizeSyncTimer = setTimeout(() => {
+    resizeSyncTimer = null;
+    if (!activeSessionId) return;
+    const m = mounted.get(activeSessionId);
+    if (m) fitAndSync(m);
+  }, 90);
 });
 ro.observe(terminalsMountEl);
 
