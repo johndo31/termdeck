@@ -15,6 +15,7 @@ export interface UiPrefs {
   notifyEnabled?: boolean;
   notifyOnlyUnfocused?: boolean;
   notifyBannerEnabled?: boolean;
+  notifySoundEnabled?: boolean;
   dockBadgeEnabled?: boolean;
   dockBounceEnabled?: boolean;
   notifyOnDecision?: boolean;

@@ -303,14 +303,16 @@ ipcMain.on("termdeck:notify", (_event, payload) => {
   const body = typeof payload.body === "string" && payload.body.trim() ? payload.body.trim() : "Waiting for your decision";
   const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
 
+  const silent = payload.sound === false;
   if (payload.banner !== false && Notification.isSupported()) {
-    const n = new Notification({ title, body, silent: false });
+    const n = new Notification({ title, body, silent });
     n.on("failed", () => {
       if (process.platform === "darwin") {
         const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        const soundClause = silent ? "" : ' sound name "Glass"';
         spawn("osascript", [
           "-e",
-          `display notification "${esc(body)}" with title "${esc(title)}" sound name "Glass"`,
+          `display notification "${esc(body)}" with title "${esc(title)}"${soundClause}`,
         ], { stdio: "ignore" });
       }
     });

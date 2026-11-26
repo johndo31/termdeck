@@ -11,7 +11,14 @@ declare global {
       setBadge: (count: number) => void;
       pickFolder: (defaultPath?: string) => Promise<string | null>;
       openExternal?: (url: string) => void;
-      notify?: (payload: { sessionId: string; title: string; body: string; banner?: boolean; bounce?: boolean }) => void;
+      notify?: (payload: {
+        sessionId: string;
+        title: string;
+        body: string;
+        banner?: boolean;
+        sound?: boolean;
+        bounce?: boolean;
+      }) => void;
       onSelectSession?: (cb: (sessionId: string) => void) => void;
       onFontZoom?: (cb: (delta: number) => void) => void;
       getServerTarget?: () => Promise<{ mode: "local" | "remote"; remoteServerUrl: string }>;
@@ -87,6 +94,7 @@ const STORAGE_ACTIVE_KEY = "termdeck:activeSessionId";
 const STORAGE_NOTIFY_KEY = "termdeck:notifyEnabled";
 const STORAGE_NOTIFY_UNFOCUSED_KEY = "termdeck:notifyOnlyUnfocused";
 const STORAGE_NOTIFY_BANNER_KEY = "termdeck:notifyBanner";
+const STORAGE_NOTIFY_SOUND_KEY = "termdeck:notifySound";
 const STORAGE_DOCK_BADGE_KEY = "termdeck:dockBadge";
 const STORAGE_DOCK_BOUNCE_KEY = "termdeck:dockBounce";
 const STORAGE_NOTIFY_DECISION_KEY = "termdeck:notifyOnDecision";
@@ -115,6 +123,7 @@ let activeSessionId: string | null = localStorage.getItem(STORAGE_ACTIVE_KEY);
 let notifyEnabled = localStorage.getItem(STORAGE_NOTIFY_KEY) === "1";
 let notifyOnlyUnfocused = localStorage.getItem(STORAGE_NOTIFY_UNFOCUSED_KEY) !== "0";
 let notifyBannerEnabled = localStorage.getItem(STORAGE_NOTIFY_BANNER_KEY) !== "0";
+let notifySoundEnabled = localStorage.getItem(STORAGE_NOTIFY_SOUND_KEY) !== "0";
 let dockBadgeEnabled = localStorage.getItem(STORAGE_DOCK_BADGE_KEY) !== "0";
 let dockBounceEnabled = localStorage.getItem(STORAGE_DOCK_BOUNCE_KEY) !== "0";
 let notifyOnDecision = localStorage.getItem(STORAGE_NOTIFY_DECISION_KEY) !== "0";
@@ -168,6 +177,7 @@ const notifySubsettingsEl = document.getElementById("notify-subsettings")!;
 const chkNotifyEnabledEl = document.getElementById("chk-notify-enabled") as HTMLInputElement;
 const chkNotifyUnfocusedEl = document.getElementById("chk-notify-unfocused") as HTMLInputElement;
 const chkNotifyBannerEl = document.getElementById("chk-notify-banner") as HTMLInputElement;
+const chkNotifySoundEl = document.getElementById("chk-notify-sound") as HTMLInputElement;
 const chkDockBadgeEl = document.getElementById("chk-dock-badge") as HTMLInputElement;
 const chkDockBounceEl = document.getElementById("chk-dock-bounce") as HTMLInputElement;
 const chkNotifyDecisionEl = document.getElementById("chk-notify-decision") as HTMLInputElement;
@@ -226,6 +236,7 @@ function persistPrefs() {
   localStorage.setItem(STORAGE_NOTIFY_KEY, notifyEnabled ? "1" : "0");
   localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, notifyOnlyUnfocused ? "1" : "0");
   localStorage.setItem(STORAGE_NOTIFY_BANNER_KEY, notifyBannerEnabled ? "1" : "0");
+  localStorage.setItem(STORAGE_NOTIFY_SOUND_KEY, notifySoundEnabled ? "1" : "0");
   localStorage.setItem(STORAGE_DOCK_BADGE_KEY, dockBadgeEnabled ? "1" : "0");
   localStorage.setItem(STORAGE_DOCK_BOUNCE_KEY, dockBounceEnabled ? "1" : "0");
   localStorage.setItem(STORAGE_NOTIFY_DECISION_KEY, notifyOnDecision ? "1" : "0");
@@ -247,6 +258,7 @@ function persistPrefs() {
         notifyEnabled,
         notifyOnlyUnfocused,
         notifyBannerEnabled,
+        notifySoundEnabled,
         dockBadgeEnabled,
         dockBounceEnabled,
         notifyOnDecision,
@@ -280,6 +292,7 @@ async function loadSavedPrefs() {
     if (typeof prefs.notifyEnabled === "boolean") notifyEnabled = prefs.notifyEnabled;
     if (typeof prefs.notifyOnlyUnfocused === "boolean") notifyOnlyUnfocused = prefs.notifyOnlyUnfocused;
     if (typeof prefs.notifyBannerEnabled === "boolean") notifyBannerEnabled = prefs.notifyBannerEnabled;
+    if (typeof prefs.notifySoundEnabled === "boolean") notifySoundEnabled = prefs.notifySoundEnabled;
     if (typeof prefs.dockBadgeEnabled === "boolean") dockBadgeEnabled = prefs.dockBadgeEnabled;
     if (typeof prefs.dockBounceEnabled === "boolean") dockBounceEnabled = prefs.dockBounceEnabled;
     if (typeof prefs.notifyOnDecision === "boolean") notifyOnDecision = prefs.notifyOnDecision;
@@ -787,6 +800,7 @@ function maybeNotifyDecision(session: SessionView, detail?: string) {
         title,
         body,
         banner: notifyBannerEnabled,
+        sound: notifySoundEnabled,
         bounce: dockBounceEnabled,
       });
     }
@@ -796,6 +810,7 @@ function maybeNotifyDecision(session: SessionView, detail?: string) {
   if (!notifyBannerEnabled || !("Notification" in window) || Notification.permission !== "granted") return;
   const n = new Notification(title, {
     body,
+    silent: !notifySoundEnabled,
     tag: `termdeck-${session.id}`,
   });
   n.onclick = () => {
@@ -1342,6 +1357,7 @@ function applyAppearance() {
   chkNotifyEnabledEl.checked = notifyEnabled;
   chkNotifyUnfocusedEl.checked = notifyOnlyUnfocused;
   chkNotifyBannerEl.checked = notifyBannerEnabled;
+  chkNotifySoundEl.checked = notifySoundEnabled;
   chkDockBadgeEl.checked = dockBadgeEnabled;
   chkDockBounceEl.checked = dockBounceEnabled;
   chkNotifyDecisionEl.checked = notifyOnDecision;
@@ -1595,6 +1611,11 @@ chkNotifyBannerEl.addEventListener("change", () => {
   persistPrefs();
 });
 
+chkNotifySoundEl.addEventListener("change", () => {
+  notifySoundEnabled = chkNotifySoundEl.checked;
+  persistPrefs();
+});
+
 chkDockBadgeEl.addEventListener("change", () => {
   dockBadgeEnabled = chkDockBadgeEl.checked;
   persistPrefs();
@@ -1642,10 +1663,14 @@ document.getElementById("btn-notify-test")!.addEventListener("click", () => {
       title: "termdeck test notification",
       body: "Notifications are working.",
       banner: notifyBannerEnabled,
+      sound: notifySoundEnabled,
       bounce: dockBounceEnabled,
     });
   } else if ("Notification" in window && Notification.permission === "granted") {
-    new Notification("termdeck test notification", { body: "Notifications are working." });
+    new Notification("termdeck test notification", {
+      body: "Notifications are working.",
+      silent: !notifySoundEnabled,
+    });
   }
 });
 
@@ -1654,6 +1679,7 @@ document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
   notifyOnlyUnfocused = true;
   notifyBannerEnabled = true;
+  notifySoundEnabled = true;
   dockBadgeEnabled = true;
   dockBounceEnabled = true;
   notifyOnDecision = true;
