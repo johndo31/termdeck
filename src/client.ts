@@ -1150,7 +1150,7 @@ function syncSidebarBackdrop() {
   sidebarBackdropEl.classList.toggle("hidden", !(isMobile && isOpen));
 }
 
-document.getElementById("btn-toggle-sidebar")!.addEventListener("click", () => {
+function toggleSidebar() {
   sidebarEl.classList.toggle("collapsed");
   syncSidebarBackdrop();
   setTimeout(() => {
@@ -1159,7 +1159,10 @@ document.getElementById("btn-toggle-sidebar")!.addEventListener("click", () => {
       if (m) fitAndSync(m);
     }
   }, 160);
-});
+}
+
+document.getElementById("btn-toggle-sidebar")!.addEventListener("click", toggleSidebar);
+document.getElementById("btn-collapse-sidebar")?.addEventListener("click", toggleSidebar);
 
 sidebarBackdropEl.addEventListener("click", () => {
   sidebarEl.classList.add("collapsed");
