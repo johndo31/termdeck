@@ -796,6 +796,12 @@ body {
   height: 100%;
 }
 
+.term-pane .xterm-screen,
+.term-pane .xterm-rows,
+.term-pane .xterm-rows > div {
+  overflow: visible !important;
+}
+
 .empty-state {
   position: absolute;
   inset: 0;
