@@ -645,6 +645,7 @@ function mountTerminal(sessionId: string): MountedTerminal {
   };
 
   term.onData((data) => {
+    entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + 300);
     if (entry.ws?.readyState === WebSocket.OPEN) {
       entry.ws.send(JSON.stringify({ type: "input", data }));
     }
@@ -670,15 +671,10 @@ function connectTerminalWs(entry: MountedTerminal) {
   entry.ws = ws;
 
   // Keep viewport pinned to bottom during initial startup/replay or right after a resize
-  // unless the user manually scrolls up.
-  let userScrolledUp = false;
+  // unless the user manually scrolled up.
   const onWheel = (ev: WheelEvent) => {
     if (ev.deltaY < 0) {
-      userScrolledUp = true;
       entry.pinBottomUntil = 0;
-    } else if (ev.deltaY > 0) {
-      const buf = entry.term.buffer.active;
-      if (buf.baseY - buf.viewportY <= 2) userScrolledUp = false;
     }
   };
   entry.el.addEventListener("wheel", onWheel, { passive: true });
@@ -703,10 +699,10 @@ function connectTerminalWs(entry: MountedTerminal) {
           };
 
       if (msg.type === "data") {
-        const shouldPinBottom = !userScrolledUp && Date.now() < entry.pinBottomUntil;
+        const shouldPinBottom = Date.now() < entry.pinBottomUntil;
         if (shouldPinBottom) {
           entry.term.write(msg.data, () => {
-            if (!userScrolledUp) entry.term.scrollToBottom();
+            if (Date.now() < entry.pinBottomUntil) entry.term.scrollToBottom();
           });
         } else {
           entry.term.write(msg.data);
