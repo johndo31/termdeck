@@ -460,7 +460,7 @@ function renderSidebar() {
     const label = document.createElement("span");
     label.className = "project-group-label";
     label.textContent = project;
-    label.title = "Click to rename category";
+    label.title = "Click to rename group";
     label.addEventListener("click", (e) => {
       e.stopPropagation();
       const input = document.createElement("input");
@@ -589,7 +589,7 @@ function renderHeader() {
   if (document.activeElement !== headerProjectEl) {
     headerProjectEl.value = s.project;
   }
-  headerProjectEl.title = `${s.cwd} — Click to change category`;
+  headerProjectEl.title = `${s.cwd} — Click to change group`;
 
   if (s.gitBranch) {
     headerBranchEl.textContent = s.gitBranch;
