@@ -639,9 +639,21 @@ function connectTerminalWs(entry: MountedTerminal) {
     entry.reconnectTimer = null;
   }
 
-  const ws = new WebSocket(wsUrl(`/ws/term/${encodeURIComponent(entry.sessionId)}`));
+  const initCols = entry.term.cols > 0 ? entry.term.cols : 120;
+  const initRows = entry.term.rows > 0 ? entry.term.rows : 36;
+  const ws = new WebSocket(
+    wsUrl(`/ws/term/${encodeURIComponent(entry.sessionId)}?cols=${initCols}&rows=${initRows}`)
+  );
   entry.ws = ws;
-  let isInitialReplay = true;
+
+  // Keep viewport pinned to bottom during initial replay & CLI startup/history load
+  // unless the user manually scrolls up.
+  const connectedAt = Date.now();
+  let userScrolledUp = false;
+  const onWheel = (ev: WheelEvent) => {
+    if (ev.deltaY < 0) userScrolledUp = true;
+  };
+  entry.el.addEventListener("wheel", onWheel, { passive: true });
 
   ws.addEventListener("open", () => {
     fitAndSync(entry);
@@ -662,10 +674,10 @@ function connectTerminalWs(entry: MountedTerminal) {
           };
 
       if (msg.type === "data") {
-        if (isInitialReplay) {
-          isInitialReplay = false;
+        const shouldPinBottom = !userScrolledUp && Date.now() - connectedAt < 3500;
+        if (shouldPinBottom) {
           entry.term.write(msg.data, () => {
-            entry.term.scrollToBottom();
+            if (!userScrolledUp) entry.term.scrollToBottom();
           });
         } else {
           entry.term.write(msg.data);
@@ -681,6 +693,7 @@ function connectTerminalWs(entry: MountedTerminal) {
   });
 
   ws.addEventListener("close", (ev) => {
+    entry.el.removeEventListener("wheel", onWheel);
     if (entry.disposed || ev.code === 1000 || ev.code === 1008) return;
     entry.reconnectTimer = setTimeout(() => connectTerminalWs(entry), 1500);
   });

@@ -254,7 +254,9 @@ function createServerHandlers(isRemoteListener: boolean) {
       if (!sessions.some((s) => s.id === sessionId)) {
         return new Response("Session not found", { status: 404 });
       }
-      if (srv.upgrade(req, { data: { kind: "term", sessionId } })) return undefined;
+      const cols = Number(url.searchParams.get("cols")) || undefined;
+      const rows = Number(url.searchParams.get("rows")) || undefined;
+      if (srv.upgrade(req, { data: { kind: "term", sessionId, cols, rows } })) return undefined;
       return new Response("Upgrade failed", { status: 400 });
     }
 
@@ -441,13 +443,13 @@ function createServerHandlers(isRemoteListener: boolean) {
         ptyManager.addEventClient(ws);
         return;
       }
-      const { sessionId } = ws.data;
+      const { sessionId, cols, rows } = ws.data;
       const session = sessions.find((s) => s.id === sessionId);
       if (!session) {
         ws.close(1008, "Unknown session");
         return;
       }
-      ptyManager.attachClient(session, ws);
+      ptyManager.attachClient(session, ws, cols, rows);
     },
     message(ws: import("bun").ServerWebSocket<WsData>, raw: string | Buffer) {
       if (ws.data.kind !== "term") return;

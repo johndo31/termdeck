@@ -10,6 +10,8 @@ import { AGENT_PRESETS, shellQuote, type SessionRecord, type SessionStatus } fro
 export interface TermSocketData {
   kind: "term";
   sessionId: string;
+  cols?: number;
+  rows?: number;
 }
 
 export interface EventSocketData {
