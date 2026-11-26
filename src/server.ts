@@ -419,17 +419,27 @@ function createServerHandlers(isRemoteListener: boolean) {
       const id = decodeURIComponent(hookMatch[1]);
       let event = "notification";
       let message: string | undefined;
+      let openUrl: string | undefined;
       try {
         const body = (await req.json()) as {
           event?: string;
           hook_event_name?: string;
           message?: string;
           tool_name?: string;
+          url?: string;
         };
         event = body.event || body.hook_event_name || "notification";
         message = body.message || (body.tool_name ? `Approve ${body.tool_name}` : undefined);
+        if (typeof body.url === "string") openUrl = body.url.trim();
       } catch {
         // empty body defaults to notification
+      }
+      if (event.toLowerCase() === "open_url") {
+        if (!openUrl || !(openUrl.startsWith("http://") || openUrl.startsWith("https://"))) {
+          return json({ error: "Only http(s) URLs are allowed" }, 400);
+        }
+        ptyManager.broadcastEvent({ type: "open_url", sessionId: id, url: openUrl });
+        return json({ ok: true });
       }
       const ok = ptyManager.applyExternalHook(id, event, message);
       return json({ ok }, ok ? 200 : 404);

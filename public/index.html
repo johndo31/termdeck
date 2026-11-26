@@ -325,6 +325,16 @@
                   </span>
                   <input id="chk-notify-bell" class="switch-input" type="checkbox" checked />
                 </label>
+
+                <div class="setting-divider"></div>
+
+                <label class="setting-toggle">
+                  <span class="setting-toggle-text">
+                    <span>Allow agents to open URLs</span>
+                    <span class="muted">Auto-open on Mac; tap-to-open toast on phone/iPad</span>
+                  </span>
+                  <input id="chk-allow-open-url" class="switch-input" type="checkbox" checked />
+                </label>
               </div>
             </div>
           </div>
@@ -414,6 +424,8 @@
         </div>
       </div>
     </div>
+
+    <div id="url-toast-container" class="url-toast-container"></div>
 
     <script type="module" src="/client.js"></script>
   </body>

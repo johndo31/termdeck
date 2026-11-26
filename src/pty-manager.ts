@@ -404,6 +404,7 @@ export class PtyManager {
       this.broadcastStatus(entry, state.status, state.detail, bell);
     });
 
+    const browserHelper = join(import.meta.dir, "..", "scripts", "termdeck-open");
     const spawnEnv: Record<string, string | undefined> = {
       ...process.env,
       TERM: "xterm-256color",
@@ -411,6 +412,7 @@ export class PtyManager {
       TERM_PROGRAM: "termdeck",
       TERMDECK_SESSION_ID: session.id,
       TERMDECK_URL: this.serverUrl,
+      ...(existsSync(browserHelper) ? { BROWSER: browserHelper } : {}),
     };
 
     if (session.host === "local") {

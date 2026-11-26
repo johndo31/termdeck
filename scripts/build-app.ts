@@ -64,6 +64,8 @@ mkdirSync(appPayloadDir, { recursive: true });
 for (const item of ["electron", "src", "public", "package.json"]) {
   cpSync(join(ROOT, item), join(appPayloadDir, item), { recursive: true });
 }
+mkdirSync(join(appPayloadDir, "scripts"), { recursive: true });
+cpSync(join(ROOT, "scripts", "termdeck-open"), join(appPayloadDir, "scripts", "termdeck-open"));
 
 // Install custom icon
 cpSync(icnsPath, join(resourcesDir, "termdeck.icns"));

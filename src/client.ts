@@ -92,6 +92,7 @@ const STORAGE_NOTIFY_DECISION_KEY = "termdeck:notifyOnDecision";
 const STORAGE_NOTIFY_COMPLETE_KEY = "termdeck:notifyOnComplete";
 const STORAGE_NOTIFY_EXIT_KEY = "termdeck:notifyOnExit";
 const STORAGE_NOTIFY_BELL_KEY = "termdeck:notifyOnBell";
+const STORAGE_ALLOW_OPEN_URL_KEY = "termdeck:allowOpenUrl";
 const STORAGE_FONT_SIZE_KEY = "termdeck:fontSize";
 const STORAGE_UI_SIZE_KEY = "termdeck:uiFontSize";
 const STORAGE_SIDEBAR_WIDTH_KEY = "termdeck:sidebarWidth";
@@ -119,6 +120,7 @@ let notifyOnDecision = localStorage.getItem(STORAGE_NOTIFY_DECISION_KEY) !== "0"
 let notifyOnComplete = localStorage.getItem(STORAGE_NOTIFY_COMPLETE_KEY) === "1";
 let notifyOnExit = localStorage.getItem(STORAGE_NOTIFY_EXIT_KEY) === "1";
 let notifyOnBell = localStorage.getItem(STORAGE_NOTIFY_BELL_KEY) === "1";
+let allowOpenUrl = localStorage.getItem(STORAGE_ALLOW_OPEN_URL_KEY) !== "0";
 let termFontSize = Math.max(
   MIN_FONT_SIZE,
   Math.min(MAX_FONT_SIZE, Number(localStorage.getItem(STORAGE_FONT_SIZE_KEY)) || DEFAULT_FONT_SIZE)
@@ -171,6 +173,8 @@ const chkNotifyDecisionEl = document.getElementById("chk-notify-decision") as HT
 const chkNotifyCompleteEl = document.getElementById("chk-notify-complete") as HTMLInputElement;
 const chkNotifyExitEl = document.getElementById("chk-notify-exit") as HTMLInputElement;
 const chkNotifyBellEl = document.getElementById("chk-notify-bell") as HTMLInputElement;
+const chkAllowOpenUrlEl = document.getElementById("chk-allow-open-url") as HTMLInputElement;
+const urlToastContainerEl = document.getElementById("url-toast-container")!;
 const chkRemoteAccessEl = document.getElementById("chk-remote-access") as HTMLInputElement;
 const chkKeepAwakeEl = document.getElementById("chk-keep-awake") as HTMLInputElement;
 const remoteSubsettingsEl = document.getElementById("remote-subsettings")!;
@@ -227,6 +231,7 @@ function persistPrefs() {
   localStorage.setItem(STORAGE_NOTIFY_COMPLETE_KEY, notifyOnComplete ? "1" : "0");
   localStorage.setItem(STORAGE_NOTIFY_EXIT_KEY, notifyOnExit ? "1" : "0");
   localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, notifyOnBell ? "1" : "0");
+  localStorage.setItem(STORAGE_ALLOW_OPEN_URL_KEY, allowOpenUrl ? "1" : "0");
 
   if (prefsSaveTimer) clearTimeout(prefsSaveTimer);
   prefsSaveTimer = setTimeout(() => {
@@ -247,6 +252,7 @@ function persistPrefs() {
         notifyOnComplete,
         notifyOnExit,
         notifyOnBell,
+        allowOpenUrl,
       }),
     }).catch(() => {});
   }, 150);
@@ -279,6 +285,7 @@ async function loadSavedPrefs() {
     if (typeof prefs.notifyOnComplete === "boolean") notifyOnComplete = prefs.notifyOnComplete;
     if (typeof prefs.notifyOnExit === "boolean") notifyOnExit = prefs.notifyOnExit;
     if (typeof prefs.notifyOnBell === "boolean") notifyOnBell = prefs.notifyOnBell;
+    if (typeof prefs.allowOpenUrl === "boolean") allowOpenUrl = prefs.allowOpenUrl;
   } catch {
     // ignore
   }
@@ -874,7 +881,25 @@ function updateSessionStatus(
   if (sessionId === activeSessionId) renderHeader();
 }
 
-// Global events WebSocket (status updates across all tabs + bells)
+function showOpenUrlToast(sessionLabel: string, url: string) {
+  const toast = document.createElement("div");
+  toast.className = "url-toast";
+  toast.innerHTML = `
+    <div class="url-toast-meta">
+      <span class="url-toast-title">${escapeHtml(sessionLabel)} wants to open</span>
+      <span class="url-toast-url" title="${escapeAttr(url)}">${escapeHtml(url)}</span>
+    </div>
+    <a class="url-toast-open" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">Open</a>
+    <button type="button" class="url-toast-close" aria-label="Dismiss">✕</button>
+  `;
+  const dismiss = () => toast.remove();
+  toast.querySelector(".url-toast-open")!.addEventListener("click", dismiss);
+  toast.querySelector(".url-toast-close")!.addEventListener("click", dismiss);
+  urlToastContainerEl.appendChild(toast);
+  setTimeout(dismiss, 20000);
+}
+
+// Global events WebSocket (status updates across all tabs + bells + open_url)
 function connectEventsWs() {
   const ws = new WebSocket(wsUrl("/ws/events"));
   ws.addEventListener("message", (ev) => {
@@ -886,6 +911,7 @@ function connectEventsWs() {
         status?: SessionStatus;
         statusDetail?: string;
         backend?: "tmux" | "pty";
+        url?: string;
       };
       if (msg.type === "sessions_changed") {
         void fetchSessions();
@@ -895,6 +921,13 @@ function connectEventsWs() {
         const s = sessions.find((x) => x.id === msg.sessionId);
         if (s && notifyOnBell && msg.status !== "working") {
           maybeNotifyDecision(s, msg.statusDetail || "Terminal bell");
+        }
+      } else if (msg.type === "open_url" && msg.url && allowOpenUrl) {
+        if (window.termdeckDesktop?.openExternal) {
+          window.termdeckDesktop.openExternal(msg.url);
+        } else {
+          const s = sessions.find((x) => x.id === msg.sessionId);
+          showOpenUrlToast(s ? s.title : "Agent", msg.url);
         }
       }
     } catch {
@@ -1298,6 +1331,7 @@ function applyAppearance() {
   chkNotifyCompleteEl.checked = notifyOnComplete;
   chkNotifyExitEl.checked = notifyOnExit;
   chkNotifyBellEl.checked = notifyOnBell;
+  chkAllowOpenUrlEl.checked = allowOpenUrl;
   notifySubsettingsEl.classList.toggle("disabled", !notifyEnabled);
 }
 
@@ -1575,6 +1609,11 @@ chkNotifyBellEl.addEventListener("change", () => {
   persistPrefs();
 });
 
+chkAllowOpenUrlEl.addEventListener("change", () => {
+  allowOpenUrl = chkAllowOpenUrlEl.checked;
+  persistPrefs();
+});
+
 document.getElementById("btn-notify-test")!.addEventListener("click", () => {
   if (window.termdeckDesktop?.notify) {
     if (dockBadgeEnabled) {
@@ -1604,6 +1643,7 @@ document.getElementById("btn-settings-reset")!.addEventListener("click", () => {
   notifyOnComplete = false;
   notifyOnExit = false;
   notifyOnBell = false;
+  allowOpenUrl = true;
   localStorage.setItem(STORAGE_UI_SIZE_KEY, String(uiFontSize));
   localStorage.setItem(STORAGE_SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   localStorage.setItem(STORAGE_NOTIFY_UNFOCUSED_KEY, "1");

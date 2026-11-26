@@ -21,6 +21,7 @@ export interface UiPrefs {
   notifyOnComplete?: boolean;
   notifyOnExit?: boolean;
   notifyOnBell?: boolean;
+  allowOpenUrl?: boolean;
 }
 
 export interface TermdeckConfig {

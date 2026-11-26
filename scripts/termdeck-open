@@ -1,0 +1,23 @@
+#!/bin/sh
+# Helper used as $BROWSER inside termdeck sessions so agents running locally or
+# on a headless Mac mini can open http(s):// URLs in the connected client.
+URL="$1"
+case "$URL" in
+  http://*|https://*)
+    if [ -n "$TERMDECK_URL" ] && [ -n "$TERMDECK_SESSION_ID" ]; then
+      ESCAPED=$(printf '%s' "$URL" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      if curl -fsS -m 3 -X POST "$TERMDECK_URL/api/hooks/$TERMDECK_SESSION_ID" \
+        -H 'content-type: application/json' \
+        -d "{\"event\":\"open_url\",\"url\":\"$ESCAPED\"}" >/dev/null 2>&1; then
+        exit 0
+      fi
+    fi
+    ;;
+esac
+
+if command -v open >/dev/null 2>&1; then
+  exec open "$URL"
+elif command -v xdg-open >/dev/null 2>&1; then
+  exec xdg-open "$URL"
+fi
+exit 1

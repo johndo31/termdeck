@@ -105,7 +105,7 @@ curl -s -X POST "$TERMDECK_URL/api/hooks/$TERMDECK_SESSION_ID" \
   -d '{"event":"permission","message":"Approve Bash"}'
 ```
 
-Supported events: `permission` / `decision`, `notification`, `working`, `stop` / `idle`.
+Supported events: `permission` / `decision`, `notification`, `working`, `stop` / `idle`, and `open_url` (with `"url": "https://..."`). Every session also sets `BROWSER` to `scripts/termdeck-open`, so CLIs that open URLs via `$BROWSER` automatically open on your MacBook (or show a tap-to-open toast on phone/iPad, toggleable in Settings).
 
 ---
 
