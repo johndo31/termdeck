@@ -745,7 +745,7 @@ function fitAndSync(entry: MountedTerminal) {
     const buf = entry.term.buffer.active;
     const wasNearBottom = buf.baseY - buf.viewportY <= 3;
     if (wasNearBottom) {
-      entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + 650);
+      entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + 2500);
     }
     entry.fit.fit();
     const { cols, rows } = entry.term;
@@ -757,9 +757,11 @@ function fitAndSync(entry: MountedTerminal) {
       requestAnimationFrame(() => {
         if (Date.now() < entry.pinBottomUntil) entry.term.scrollToBottom();
       });
-      setTimeout(() => {
-        if (Date.now() < entry.pinBottomUntil) entry.term.scrollToBottom();
-      }, 220);
+      for (const delay of [220, 650, 1400]) {
+        setTimeout(() => {
+          if (Date.now() < entry.pinBottomUntil) entry.term.scrollToBottom();
+        }, delay);
+      }
     }
   } catch {
     // ignore if container hidden
