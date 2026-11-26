@@ -754,6 +754,12 @@ function fitAndSync(entry: MountedTerminal) {
     }
     if (wasNearBottom) {
       entry.term.scrollToBottom();
+      requestAnimationFrame(() => {
+        if (Date.now() < entry.pinBottomUntil) entry.term.scrollToBottom();
+      });
+      setTimeout(() => {
+        if (Date.now() < entry.pinBottomUntil) entry.term.scrollToBottom();
+      }, 220);
     }
   } catch {
     // ignore if container hidden
