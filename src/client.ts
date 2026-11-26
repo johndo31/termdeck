@@ -1164,12 +1164,6 @@ function syncSidebarBackdrop() {
 function toggleSidebar() {
   sidebarEl.classList.toggle("collapsed");
   syncSidebarBackdrop();
-  setTimeout(() => {
-    if (activeSessionId) {
-      const m = mounted.get(activeSessionId);
-      if (m) fitAndSync(m);
-    }
-  }, 160);
 }
 
 document.getElementById("btn-toggle-sidebar")!.addEventListener("click", toggleSidebar);
@@ -1319,7 +1313,7 @@ btnDeleteConfirmEl.addEventListener("click", async () => {
   }
 });
 
-// Debounced resize observer so CSS sidebar transitions send a single clean SIGWINCH
+// Debounced resize observer so CSS sidebar transitions (140ms) send a single clean SIGWINCH
 let resizeSyncTimer: ReturnType<typeof setTimeout> | null = null;
 const ro = new ResizeObserver(() => {
   if (resizeSyncTimer) clearTimeout(resizeSyncTimer);
@@ -1328,7 +1322,7 @@ const ro = new ResizeObserver(() => {
     if (!activeSessionId) return;
     const m = mounted.get(activeSessionId);
     if (m) fitAndSync(m);
-  }, 90);
+  }, 170);
 });
 ro.observe(terminalsMountEl);
 
