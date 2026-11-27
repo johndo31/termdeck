@@ -844,7 +844,7 @@ body {
 
 .term-pane {
   position: absolute;
-  inset: 8px 14px 12px 12px;
+  inset: 6px 12px 4px 12px;
   padding: 0;
   visibility: hidden;
   pointer-events: none;
