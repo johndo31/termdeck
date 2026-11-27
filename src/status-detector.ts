@@ -45,11 +45,13 @@ const TAIL_LINE_DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: /would you like (?:me )?to\b.*\?\s*$/im, detail: "Waiting for answer" },
 ];
 
-// Active working cues (interrupt hints, braille spinners, tool activity)
+// Active working cues (interrupt hints, braille spinners, background agents, tool activity)
 const BRAILLE_SPINNER_RE = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]/;
 const ACTIVE_INTERRUPT_RE = /esc to interrupt|ctrl\+c to interrupt|ctrl-c to cancel/i;
+const BACKGROUND_AGENT_RE = /\b[1-9]\d*\s+(?:subagent\(s\)|subagents?|background\s+tasks?)\b/i;
 const WORKING_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: ACTIVE_INTERRUPT_RE, detail: "Working…" },
+  { re: BACKGROUND_AGENT_RE, detail: "Subagent running…" },
   { re: /\b(?:thinking|reasoning|pondering|analyzing|planning)\b\.{0,3}/i, detail: "Thinking…" },
   { re: /\b(?:reading|searching|editing|writing|running|executing|building|testing)\b/i, detail: "Running tool…" },
 ];
@@ -212,14 +214,16 @@ export class SessionStatusDetector {
     // 3. Determine immediate state while output is flowing
     const recentLines = this.getRecentLines(14);
     const bottomLines = this.getRecentLines(3);
-    const strongWorkingCue = oscTitleWorking || ACTIVE_INTERRUPT_RE.test(bottomLines);
+    const lastTwoLines = this.getRecentLines(2);
+    const hasBackgroundAgent = BACKGROUND_AGENT_RE.test(lastTwoLines);
+    const strongWorkingCue = oscTitleWorking || ACTIVE_INTERRUPT_RE.test(bottomLines) || hasBackgroundAgent;
     const workingHint = this.hasPendingTurn || strongWorkingCue
-      ? this.detectWorkingHint(recentLines, oscTitleWorking)
+      ? this.detectWorkingHint(recentLines, oscTitleWorking, hasBackgroundAgent)
       : null;
 
     if (strongWorkingCue) {
       this.hasPendingTurn = true;
-      this.setState("working", workingHint || "Working…", false);
+      this.setState("working", workingHint || (hasBackgroundAgent ? "Subagent running…" : "Working…"), false);
     } else if (
       this.hasPendingTurn &&
       clean.trim().length > 0 &&
@@ -243,8 +247,12 @@ export class SessionStatusDetector {
       if (this.status === "working") {
         const recent = this.getRecentLines(8);
         const bottom = this.getRecentLines(3);
+        const tailTwo = this.getRecentLines(2);
+        if (BACKGROUND_AGENT_RE.test(tailTwo)) {
+          return;
+        }
         const isIdlePrompt = IDLE_FOOTER_RE.test(bottom) || IDLE_PROMPT_RE.test(bottom);
-        const decision = isIdlePrompt ? null : this.detectDecision(recent, this.getRecentLines(2));
+        const decision = isIdlePrompt ? null : this.detectDecision(recent, tailTwo);
         if (decision) {
           this.setState("needs_input", decision, true);
         } else {
@@ -259,16 +267,24 @@ export class SessionStatusDetector {
     if (this.status === "exited") return;
     const recent = this.getRecentLines(8);
     const bottom = this.getRecentLines(3);
+    const tailTwo = this.getRecentLines(2);
+
+    // Keep working state if a background agent/subagent is visibly active in the bottom bar
+    if (BACKGROUND_AGENT_RE.test(tailTwo)) {
+      this.hasPendingTurn = true;
+      this.setState("working", "Subagent running…");
+      return;
+    }
 
     // If the CLI clearly returned to its normal idle input footer or shell prompt, settle to idle first
-    if ((IDLE_FOOTER_RE.test(bottom) || IDLE_PROMPT_RE.test(bottom)) && !this.detectWorkingHint(recent, false)) {
+    if ((IDLE_FOOTER_RE.test(bottom) || IDLE_PROMPT_RE.test(bottom)) && !this.detectWorkingHint(recent, false, false)) {
       this.hasPendingTurn = false;
       this.clearTimers();
       this.setState("idle", "Ready");
       return;
     }
 
-    const decision = this.detectDecision(recent, this.getRecentLines(2));
+    const decision = this.detectDecision(recent, tailTwo);
     if (decision) {
       this.clearTimers();
       this.setState("needs_input", decision, true);
@@ -306,11 +322,13 @@ export class SessionStatusDetector {
     return null;
   }
 
-  private detectWorkingHint(recentText: string, oscSpinner: boolean): string | null {
+  private detectWorkingHint(recentText: string, oscSpinner: boolean, hasBackgroundAgent = false): string | null {
     if (oscSpinner) return "Working…";
+    if (hasBackgroundAgent) return "Subagent running…";
     // Check last 6 non-empty lines for active spinners or interrupt prompts
     const bottom = recentText.split("\n").slice(-6).join("\n");
     for (const p of WORKING_PATTERNS) {
+      if (p.re === BACKGROUND_AGENT_RE) continue;
       if (p.re.test(bottom)) return p.detail;
     }
     if (BRAILLE_SPINNER_RE.test(bottom)) return "Working…";
