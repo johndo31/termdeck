@@ -322,6 +322,7 @@ export class PtyManager {
         `    tmux -L termdeck set-option -t ${shellQuote(tmuxName)} mouse on 2>/dev/null || true`,
         `    tmux -L termdeck set-option -t ${shellQuote(tmuxName)} history-limit 50000 2>/dev/null || true`,
         `    tmux -L termdeck set-option -t ${shellQuote(tmuxName)} window-size latest 2>/dev/null || true`,
+        `    tmux -L termdeck set-option -t ${shellQuote(tmuxName)} allow-passthrough on 2>/dev/null || true`,
         `  fi`,
         `  exec tmux -L termdeck attach-session -t ${shellQuote(tmuxName)}`,
         `else`,
@@ -362,6 +363,7 @@ export class PtyManager {
         `  tmux -L termdeck set-option -t ${shellQuote(tmuxName)} mouse on 2>/dev/null || true`,
         `  tmux -L termdeck set-option -t ${shellQuote(tmuxName)} history-limit 50000 2>/dev/null || true`,
         `  tmux -L termdeck set-option -t ${shellQuote(tmuxName)} window-size latest 2>/dev/null || true`,
+        `  tmux -L termdeck set-option -t ${shellQuote(tmuxName)} allow-passthrough on 2>/dev/null || true`,
         `fi`,
         `exec tmux -L termdeck attach-session -t ${shellQuote(tmuxName)}`,
       ].join("\n");

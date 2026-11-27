@@ -47,7 +47,7 @@ const TAIL_LINE_DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
 
 // Active working cues (interrupt hints, braille spinners, background agents, tool activity)
 const BRAILLE_SPINNER_RE = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]/;
-const ACTIVE_INTERRUPT_RE = /esc to interrupt|ctrl\+c to interrupt|ctrl-c to cancel/i;
+const ACTIVE_INTERRUPT_RE = /esc to interrupt|esc to cancel|ctrl\+c to interrupt|ctrl-c to cancel/i;
 const BACKGROUND_AGENT_RE = /\b[1-9]\d*\s+(?:subagent\(s\)|subagents?|background\s+tasks?)\b/i;
 const WORKING_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: ACTIVE_INTERRUPT_RE, detail: "Working…" },
@@ -147,11 +147,53 @@ export class SessionStatusDetector {
     let oscBell = false;
     let oscNotification: string | null = null;
     let oscTitleWorking = false;
+    let osc7501State: { status: SessionStatus; detail?: string; bell?: boolean } | null = null;
+    let oscProgressState: "working" | "clear" | "paused" | null = null;
 
     for (const match of rawChunk.matchAll(OSC_REGEX)) {
       const code = match[1];
       const payload = match[2].trim();
-      if (code === "9" || code === "99" || code === "777") {
+      if (code === "7501") {
+        // OSC 7501 Program Status Protocol: key=value:key=value
+        const fields: Record<string, string> = {};
+        for (const part of payload.split(":")) {
+          const eq = part.indexOf("=");
+          if (eq > 0) {
+            fields[part.slice(0, eq).trim().toLowerCase()] = part.slice(eq + 1).trim();
+          }
+        }
+        const st = (fields.state || "").toLowerCase();
+        let msg = fields.msg || "";
+        if (msg && /^[A-Za-z0-9+/]+=*$/.test(msg) && msg.length % 4 === 0 && msg.length >= 8) {
+          try {
+            const decoded = Buffer.from(msg, "base64").toString("utf8");
+            if (/^[\x20-\x7E\u00A0-\uFFFF]+$/.test(decoded)) msg = decoded;
+          } catch {
+            // keep raw msg
+          }
+        }
+        const detail = msg.slice(0, 48) || undefined;
+        if (st === "working") {
+          osc7501State = { status: "working", detail: detail || "Working…" };
+        } else if (st === "blocked" || st === "error") {
+          const kind = fields.kind ? `${fields.kind[0].toUpperCase()}${fields.kind.slice(1)}` : undefined;
+          osc7501State = { status: "needs_input", detail: detail || kind || "Needs attention", bell: true };
+        } else if (st === "idle" || st === "done" || st === "clear") {
+          osc7501State = { status: "idle", detail: detail || "Ready", bell: st === "done" };
+        }
+      } else if (code === "9" && /^4;/.test(payload)) {
+        // OSC 9;4;<state>;<progress> (ConEmu / Windows Terminal / Ghostty / iTerm2 progress)
+        const parts = payload.split(";");
+        const progressState = parts[1];
+        if (progressState === "1" || progressState === "3") {
+          oscProgressState = "working";
+          oscTitleWorking = true;
+        } else if (progressState === "0") {
+          oscProgressState = "clear";
+        } else if (progressState === "2" || progressState === "4") {
+          oscProgressState = "paused";
+        }
+      } else if (code === "9" || code === "99" || code === "777") {
         // Desktop notification OSC (used by Claude Code / modern TUIs)
         oscNotification = payload.replace(/^notify;/i, "").slice(0, 48) || "Needs attention";
         oscBell = true;
@@ -175,6 +217,14 @@ export class SessionStatusDetector {
       this.cleanTail = (this.cleanTail + clean).slice(-MAX_TAIL_CHARS);
     }
 
+    // Structured OSC 7501 status takes precedence over text heuristics
+    if (osc7501State) {
+      this.clearTimers();
+      this.hasPendingTurn = osc7501State.status === "working";
+      this.setState(osc7501State.status, osc7501State.detail, Boolean(osc7501State.bell));
+      return;
+    }
+
     // Immediate OSC notification: only classify as needs_input if it mentions approval/decision/input;
     // otherwise treat as a turn-finished completion signal (idle).
     if (oscNotification) {
@@ -185,6 +235,13 @@ export class SessionStatusDetector {
         this.hasPendingTurn = false;
         this.setState("idle", "Ready", true);
       }
+      return;
+    }
+
+    if (oscProgressState === "clear" && !clean.trim() && this.status === "working") {
+      this.hasPendingTurn = false;
+      this.clearTimers();
+      this.setState("idle", "Ready");
       return;
     }
 
