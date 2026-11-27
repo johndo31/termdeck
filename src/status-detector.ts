@@ -48,8 +48,8 @@ const TAIL_LINE_DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
 // Active working cues (interrupt hints, braille spinners, background agents, tool activity)
 const BRAILLE_SPINNER_RE = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]/;
 const ACTIVE_INTERRUPT_RE = /esc to interrupt|esc to cancel|ctrl\+c to interrupt|ctrl-c to cancel/i;
-const BACKGROUND_AGENT_RE = /\b[1-9]\d*\s+(?:subagent\(s\)|subagents?|background\s+tasks?)/i;
-const SUBAGENT_ROW_RE = /[●•]\s*Agent\([^)]+\)/;
+const BACKGROUND_AGENT_RE = /·\s*[1-9]\d*\s+subagent\(s\)/i;
+const SUBAGENT_ROW_RE = /[●•]\s*Agent\([^)]+\)\s*·/;
 const WORKING_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: ACTIVE_INTERRUPT_RE, detail: "Working…" },
   { re: BACKGROUND_AGENT_RE, detail: "Subagent running…" },
@@ -69,6 +69,7 @@ export class SessionStatusDetector {
   private lastOutputAt = 0;
   private hasPendingTurn = false;
   private backgroundAgentActive = false;
+  private lastBgAgentSeenAt = 0;
   private status: SessionStatus = "idle";
   private detail: string | undefined;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -217,20 +218,21 @@ export class SessionStatusDetector {
     const clean = stripAnsi(rawChunk);
     if (clean) {
       this.cleanTail = (this.cleanTail + clean).slice(-MAX_TAIL_CHARS);
-      if (BACKGROUND_AGENT_RE.test(clean) || SUBAGENT_ROW_RE.test(clean)) {
+      if (this.agent === "antigravity" && (BACKGROUND_AGENT_RE.test(clean) || SUBAGENT_ROW_RE.test(clean))) {
         this.backgroundAgentActive = true;
-      } else if (IDLE_FOOTER_RE.test(clean) && !BACKGROUND_AGENT_RE.test(clean)) {
-        this.backgroundAgentActive = false;
+        this.lastBgAgentSeenAt = now;
       }
     }
 
     // Structured OSC 7501 status takes precedence over text heuristics
     if (osc7501State) {
       this.clearTimers();
-      this.hasPendingTurn = osc7501State.status === "working";
-      if (osc7501State.status === "idle") {
-        this.backgroundAgentActive = false;
+      if (osc7501State.status === "idle" && this.backgroundAgentActive) {
+        this.hasPendingTurn = true;
+        this.setState("working", "Subagent running…", Boolean(osc7501State.bell));
+        return;
       }
+      this.hasPendingTurn = osc7501State.status === "working";
       this.setState(osc7501State.status, osc7501State.detail, Boolean(osc7501State.bell));
       return;
     }
@@ -285,9 +287,10 @@ export class SessionStatusDetector {
     const bottomLines = this.getRecentLines(3);
     const lastTwoLines = this.getRecentLines(2);
     const hasBackgroundAgent =
-      this.backgroundAgentActive ||
-      BACKGROUND_AGENT_RE.test(lastTwoLines) ||
-      SUBAGENT_ROW_RE.test(lastTwoLines);
+      this.agent === "antigravity" &&
+      (this.backgroundAgentActive ||
+        BACKGROUND_AGENT_RE.test(lastTwoLines) ||
+        SUBAGENT_ROW_RE.test(lastTwoLines));
     const strongWorkingCue = oscTitleWorking || ACTIVE_INTERRUPT_RE.test(bottomLines) || hasBackgroundAgent;
     const workingHint = this.hasPendingTurn || strongWorkingCue
       ? this.detectWorkingHint(recentLines, oscTitleWorking, hasBackgroundAgent)
@@ -320,7 +323,10 @@ export class SessionStatusDetector {
         const recent = this.getRecentLines(8);
         const bottom = this.getRecentLines(3);
         const tailTwo = this.getRecentLines(2);
-        if (this.backgroundAgentActive || BACKGROUND_AGENT_RE.test(tailTwo) || SUBAGENT_ROW_RE.test(tailTwo)) {
+        if (
+          this.agent === "antigravity" &&
+          (this.backgroundAgentActive || BACKGROUND_AGENT_RE.test(tailTwo) || SUBAGENT_ROW_RE.test(tailTwo))
+        ) {
           return;
         }
         const isIdlePrompt = IDLE_FOOTER_RE.test(bottom) || IDLE_PROMPT_RE.test(bottom);
@@ -341,8 +347,22 @@ export class SessionStatusDetector {
     const bottom = this.getRecentLines(3);
     const tailTwo = this.getRecentLines(2);
 
+    // Clear backgroundAgentActive once agy settles on its idle footer without any subagent indicator
+    if (
+      this.backgroundAgentActive &&
+      IDLE_FOOTER_RE.test(bottom) &&
+      !BACKGROUND_AGENT_RE.test(bottom) &&
+      !SUBAGENT_ROW_RE.test(bottom) &&
+      Date.now() - this.lastBgAgentSeenAt > 1500
+    ) {
+      this.backgroundAgentActive = false;
+    }
+
     // Keep working state if a background agent/subagent is visibly active
-    if (this.backgroundAgentActive || BACKGROUND_AGENT_RE.test(tailTwo) || SUBAGENT_ROW_RE.test(tailTwo)) {
+    if (
+      this.agent === "antigravity" &&
+      (this.backgroundAgentActive || BACKGROUND_AGENT_RE.test(tailTwo) || SUBAGENT_ROW_RE.test(tailTwo))
+    ) {
       this.hasPendingTurn = true;
       this.setState("working", "Subagent running…");
       return;
