@@ -352,8 +352,7 @@ export class SessionStatusDetector {
       this.backgroundAgentActive &&
       IDLE_FOOTER_RE.test(bottom) &&
       !BACKGROUND_AGENT_RE.test(bottom) &&
-      !SUBAGENT_ROW_RE.test(bottom) &&
-      Date.now() - this.lastBgAgentSeenAt > 1500
+      !SUBAGENT_ROW_RE.test(bottom)
     ) {
       this.backgroundAgentActive = false;
     }
