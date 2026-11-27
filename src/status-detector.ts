@@ -48,7 +48,8 @@ const TAIL_LINE_DECISION_PATTERNS: Array<{ re: RegExp; detail: string }> = [
 // Active working cues (interrupt hints, braille spinners, background agents, tool activity)
 const BRAILLE_SPINNER_RE = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]/;
 const ACTIVE_INTERRUPT_RE = /esc to interrupt|esc to cancel|ctrl\+c to interrupt|ctrl-c to cancel/i;
-const BACKGROUND_AGENT_RE = /\b[1-9]\d*\s+(?:subagent\(s\)|subagents?|background\s+tasks?)\b/i;
+const BACKGROUND_AGENT_RE = /\b[1-9]\d*\s+(?:subagent\(s\)|subagents?|background\s+tasks?)/i;
+const SUBAGENT_ROW_RE = /[●•]\s*Agent\([^)]+\)/;
 const WORKING_PATTERNS: Array<{ re: RegExp; detail: string }> = [
   { re: ACTIVE_INTERRUPT_RE, detail: "Working…" },
   { re: BACKGROUND_AGENT_RE, detail: "Subagent running…" },
@@ -67,6 +68,7 @@ export class SessionStatusDetector {
   private lastRedrawTriggerAt = 0;
   private lastOutputAt = 0;
   private hasPendingTurn = false;
+  private backgroundAgentActive = false;
   private status: SessionStatus = "idle";
   private detail: string | undefined;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -215,22 +217,32 @@ export class SessionStatusDetector {
     const clean = stripAnsi(rawChunk);
     if (clean) {
       this.cleanTail = (this.cleanTail + clean).slice(-MAX_TAIL_CHARS);
+      if (BACKGROUND_AGENT_RE.test(clean) || SUBAGENT_ROW_RE.test(clean)) {
+        this.backgroundAgentActive = true;
+      } else if (IDLE_FOOTER_RE.test(clean) && !BACKGROUND_AGENT_RE.test(clean)) {
+        this.backgroundAgentActive = false;
+      }
     }
 
     // Structured OSC 7501 status takes precedence over text heuristics
     if (osc7501State) {
       this.clearTimers();
       this.hasPendingTurn = osc7501State.status === "working";
+      if (osc7501State.status === "idle") {
+        this.backgroundAgentActive = false;
+      }
       this.setState(osc7501State.status, osc7501State.detail, Boolean(osc7501State.bell));
       return;
     }
 
     // Immediate OSC notification: only classify as needs_input if it mentions approval/decision/input;
-    // otherwise treat as a turn-finished completion signal (idle).
+    // otherwise treat as a turn-finished completion signal (idle unless a background agent is still running).
     if (oscNotification) {
       this.clearTimers();
       if (/permission|approv|decision|confirm|waiting|input|question/i.test(oscNotification)) {
         this.setState("needs_input", oscNotification, true);
+      } else if (this.backgroundAgentActive) {
+        this.setState("working", "Subagent running…", true);
       } else {
         this.hasPendingTurn = false;
         this.setState("idle", "Ready", true);
@@ -238,7 +250,7 @@ export class SessionStatusDetector {
       return;
     }
 
-    if (oscProgressState === "clear" && !clean.trim() && this.status === "working") {
+    if (oscProgressState === "clear" && !clean.trim() && this.status === "working" && !this.backgroundAgentActive) {
       this.hasPendingTurn = false;
       this.clearTimers();
       this.setState("idle", "Ready");
@@ -272,7 +284,10 @@ export class SessionStatusDetector {
     const recentLines = this.getRecentLines(14);
     const bottomLines = this.getRecentLines(3);
     const lastTwoLines = this.getRecentLines(2);
-    const hasBackgroundAgent = BACKGROUND_AGENT_RE.test(lastTwoLines);
+    const hasBackgroundAgent =
+      this.backgroundAgentActive ||
+      BACKGROUND_AGENT_RE.test(lastTwoLines) ||
+      SUBAGENT_ROW_RE.test(lastTwoLines);
     const strongWorkingCue = oscTitleWorking || ACTIVE_INTERRUPT_RE.test(bottomLines) || hasBackgroundAgent;
     const workingHint = this.hasPendingTurn || strongWorkingCue
       ? this.detectWorkingHint(recentLines, oscTitleWorking, hasBackgroundAgent)
@@ -305,7 +320,7 @@ export class SessionStatusDetector {
         const recent = this.getRecentLines(8);
         const bottom = this.getRecentLines(3);
         const tailTwo = this.getRecentLines(2);
-        if (BACKGROUND_AGENT_RE.test(tailTwo)) {
+        if (this.backgroundAgentActive || BACKGROUND_AGENT_RE.test(tailTwo) || SUBAGENT_ROW_RE.test(tailTwo)) {
           return;
         }
         const isIdlePrompt = IDLE_FOOTER_RE.test(bottom) || IDLE_PROMPT_RE.test(bottom);
@@ -326,8 +341,8 @@ export class SessionStatusDetector {
     const bottom = this.getRecentLines(3);
     const tailTwo = this.getRecentLines(2);
 
-    // Keep working state if a background agent/subagent is visibly active in the bottom bar
-    if (BACKGROUND_AGENT_RE.test(tailTwo)) {
+    // Keep working state if a background agent/subagent is visibly active
+    if (this.backgroundAgentActive || BACKGROUND_AGENT_RE.test(tailTwo) || SUBAGENT_ROW_RE.test(tailTwo)) {
       this.hasPendingTurn = true;
       this.setState("working", "Subagent running…");
       return;
