@@ -708,12 +708,13 @@ function mountTerminal(sessionId: string): MountedTerminal {
     fit,
     ws: null,
     reconnectTimer: null,
-    pinBottomUntil: Date.now() + 3500,
+    pinBottomUntil: Date.now() + 12000,
     disposed: false,
   };
 
   term.onData((data) => {
-    entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + 300);
+    const submitted = data.includes("\r") || data.includes("\n");
+    entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + (submitted ? 4000 : 300));
     if (entry.ws?.readyState === WebSocket.OPEN) {
       entry.ws.send(JSON.stringify({ type: "input", data }));
     }
@@ -748,7 +749,7 @@ function connectTerminalWs(entry: MountedTerminal) {
   entry.el.addEventListener("wheel", onWheel, { passive: true });
 
   ws.addEventListener("open", () => {
-    entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + 3500);
+    entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + 12000);
     fitAndSync(entry);
   });
 
@@ -767,6 +768,12 @@ function connectTerminalWs(entry: MountedTerminal) {
           };
 
       if (msg.type === "data") {
+        const buf = entry.term.buffer.active;
+        const wasNearBottom = buf.baseY - buf.viewportY <= 3;
+        const isFullRedraw = msg.data.includes("\x1b[2J") || msg.data.includes("\x1b[3J");
+        if (isFullRedraw && wasNearBottom) {
+          entry.pinBottomUntil = Math.max(entry.pinBottomUntil, Date.now() + 2000);
+        }
         const shouldPinBottom = Date.now() < entry.pinBottomUntil;
         if (shouldPinBottom) {
           entry.term.write(msg.data, () => {
