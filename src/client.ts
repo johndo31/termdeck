@@ -131,6 +131,18 @@ let notifyOnComplete = localStorage.getItem(STORAGE_NOTIFY_COMPLETE_KEY) === "1"
 let notifyOnExit = localStorage.getItem(STORAGE_NOTIFY_EXIT_KEY) === "1";
 let notifyOnBell = localStorage.getItem(STORAGE_NOTIFY_BELL_KEY) === "1";
 let allowOpenUrl = localStorage.getItem(STORAGE_ALLOW_OPEN_URL_KEY) !== "0";
+let groupOrder: string[] = (() => {
+  try {
+    const raw = localStorage.getItem("termdeck.groupOrder");
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+})();
+let dragKind: "group" | "session" | null = null;
+let dragGroupName: string | null = null;
+let dragSessionId: string | null = null;
 let termFontSize = Math.max(
   MIN_FONT_SIZE,
   Math.min(MAX_FONT_SIZE, Number(localStorage.getItem(STORAGE_FONT_SIZE_KEY)) || DEFAULT_FONT_SIZE)
@@ -246,6 +258,7 @@ function persistPrefs() {
   localStorage.setItem(STORAGE_NOTIFY_EXIT_KEY, notifyOnExit ? "1" : "0");
   localStorage.setItem(STORAGE_NOTIFY_BELL_KEY, notifyOnBell ? "1" : "0");
   localStorage.setItem(STORAGE_ALLOW_OPEN_URL_KEY, allowOpenUrl ? "1" : "0");
+  localStorage.setItem("termdeck.groupOrder", JSON.stringify(groupOrder));
 
   if (prefsSaveTimer) clearTimeout(prefsSaveTimer);
   prefsSaveTimer = setTimeout(() => {
@@ -268,6 +281,7 @@ function persistPrefs() {
         notifyOnExit,
         notifyOnBell,
         allowOpenUrl,
+        groupOrder,
       }),
     }).catch(() => {});
   }, 150);
@@ -302,6 +316,9 @@ async function loadSavedPrefs() {
     if (typeof prefs.notifyOnExit === "boolean") notifyOnExit = prefs.notifyOnExit;
     if (typeof prefs.notifyOnBell === "boolean") notifyOnBell = prefs.notifyOnBell;
     if (typeof prefs.allowOpenUrl === "boolean") allowOpenUrl = prefs.allowOpenUrl;
+    if (Array.isArray(prefs.groupOrder)) {
+      groupOrder = prefs.groupOrder.filter((x): x is string => typeof x === "string");
+    }
   } catch {
     // ignore
   }
@@ -436,7 +453,7 @@ function renderSidebar() {
     return;
   }
 
-  // Group sessions by project name
+  // Group sessions by project name in stable user-controlled order
   const groups = new Map<string, SessionView[]>();
   for (const s of sessions) {
     const list = groups.get(s.project) ?? [];
@@ -444,25 +461,137 @@ function renderSidebar() {
     groups.set(s.project, list);
   }
 
+  const presentNames = Array.from(groups.keys());
+  const presentSet = new Set(presentNames);
+  const orderedNames = groupOrder.filter((name) => presentSet.has(name));
+  const orderedSet = new Set(orderedNames);
+  let orderChanged = orderedNames.length !== groupOrder.length;
+  for (const name of presentNames) {
+    if (!orderedSet.has(name)) {
+      orderedNames.push(name);
+      orderedSet.add(name);
+      orderChanged = true;
+    }
+  }
+  if (orderChanged) {
+    groupOrder = orderedNames;
+    persistPrefs();
+  }
+
   // Sync category autocomplete datalist
-  categoryOptionsEl.innerHTML = Array.from(groups.keys())
+  categoryOptionsEl.innerHTML = orderedNames
     .map((p) => `<option value="${escapeAttr(p)}"></option>`)
     .join("");
 
+  const clearDragIndicators = () => {
+    sessionListEl
+      .querySelectorAll(".drag-over-top, .drag-over-bottom, .dragging")
+      .forEach((el) => el.classList.remove("drag-over-top", "drag-over-bottom", "dragging"));
+  };
+
+  const persistSessionOrder = async (projectUpdates?: Record<string, string>) => {
+    await fetch("/api/sessions/order", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ids: sessions.map((x) => x.id),
+        projectUpdates,
+      }),
+    }).catch(() => {});
+  };
+
   const fragment = document.createDocumentFragment();
-  for (const [project, items] of groups) {
+  for (const project of orderedNames) {
+    const items = groups.get(project)!;
     const groupEl = document.createElement("div");
     groupEl.className = "project-group";
+    groupEl.dataset.project = project;
 
     const groupHeader = document.createElement("div");
     groupHeader.className = "project-group-header";
+    groupHeader.draggable = true;
+
+    groupHeader.addEventListener("dragstart", (e) => {
+      if ((e.target as HTMLElement).tagName === "INPUT") {
+        e.preventDefault();
+        return;
+      }
+      dragKind = "group";
+      dragGroupName = project;
+      dragSessionId = null;
+      groupEl.classList.add("dragging");
+      e.dataTransfer?.setData("text/plain", project);
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    });
+    groupHeader.addEventListener("dragend", () => {
+      dragKind = null;
+      dragGroupName = null;
+      clearDragIndicators();
+    });
+
+    groupEl.addEventListener("dragover", (e) => {
+      if (dragKind === "group" && dragGroupName && dragGroupName !== project) {
+        e.preventDefault();
+        const rect = groupEl.getBoundingClientRect();
+        const after = e.clientY > rect.top + rect.height / 2;
+        groupEl.classList.toggle("drag-over-top", !after);
+        groupEl.classList.toggle("drag-over-bottom", after);
+      } else if (dragKind === "session" && dragSessionId) {
+        // Allow dropping a session onto a group header to move it into that group
+        if ((e.target as HTMLElement).closest(".project-group-header")) {
+          e.preventDefault();
+          groupEl.classList.add("drag-over-top");
+        }
+      }
+    });
+    groupEl.addEventListener("dragleave", (e) => {
+      if (!groupEl.contains(e.relatedTarget as Node | null)) {
+        groupEl.classList.remove("drag-over-top", "drag-over-bottom");
+      }
+    });
+    groupEl.addEventListener("drop", (e) => {
+      if (dragKind === "group" && dragGroupName && dragGroupName !== project) {
+        e.preventDefault();
+        const rect = groupEl.getBoundingClientRect();
+        const after = e.clientY > rect.top + rect.height / 2;
+        const nextOrder = groupOrder.filter((g) => g !== dragGroupName);
+        let idx = nextOrder.indexOf(project);
+        if (idx === -1) idx = nextOrder.length;
+        else if (after) idx += 1;
+        nextOrder.splice(idx, 0, dragGroupName);
+        groupOrder = nextOrder;
+        dragKind = null;
+        dragGroupName = null;
+        clearDragIndicators();
+        persistPrefs();
+        renderSidebar();
+      } else if (
+        dragKind === "session" &&
+        dragSessionId &&
+        (e.target as HTMLElement).closest(".project-group-header")
+      ) {
+        e.preventDefault();
+        const dragged = sessions.find((x) => x.id === dragSessionId);
+        if (dragged) {
+          const prevProject = dragged.project;
+          dragged.project = project;
+          dragKind = null;
+          dragSessionId = null;
+          clearDragIndicators();
+          renderSidebar();
+          renderHeader();
+          void persistSessionOrder(prevProject !== project ? { [dragged.id]: project } : undefined);
+        }
+      }
+    });
 
     const label = document.createElement("span");
     label.className = "project-group-label";
     label.textContent = project;
-    label.title = "Click to rename group";
+    label.title = "Click to rename · Drag header to reorder";
     label.addEventListener("click", (e) => {
       e.stopPropagation();
+      groupHeader.draggable = false;
       const input = document.createElement("input");
       input.type = "text";
       input.className = "project-group-input";
@@ -476,6 +605,14 @@ function renderSidebar() {
         if (commit && next && next !== project) {
           const toUpdate = sessions.filter((s) => s.project === project);
           for (const s of toUpdate) s.project = next;
+          // Preserve group position in sidebar when renaming
+          const nextOrder: string[] = [];
+          for (const g of groupOrder) {
+            const mapped = g === project ? next : g;
+            if (!nextOrder.includes(mapped)) nextOrder.push(mapped);
+          }
+          groupOrder = nextOrder;
+          persistPrefs();
           renderSidebar();
           renderHeader();
           await Promise.all(
@@ -524,6 +661,56 @@ function renderSidebar() {
       const needsInput = s.status === "needs_input";
       btn.className = `session-item${isSelected ? " selected" : ""}${needsInput ? " needs-input" : ""}`;
       btn.dataset.id = s.id;
+      btn.draggable = true;
+
+      btn.addEventListener("dragstart", (e) => {
+        e.stopPropagation();
+        dragKind = "session";
+        dragSessionId = s.id;
+        dragGroupName = null;
+        btn.classList.add("dragging");
+        e.dataTransfer?.setData("text/plain", s.id);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+      });
+      btn.addEventListener("dragend", () => {
+        dragKind = null;
+        dragSessionId = null;
+        clearDragIndicators();
+      });
+      btn.addEventListener("dragover", (e) => {
+        if (dragKind !== "session" || !dragSessionId || dragSessionId === s.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = btn.getBoundingClientRect();
+        const after = e.clientY > rect.top + rect.height / 2;
+        btn.classList.toggle("drag-over-top", !after);
+        btn.classList.toggle("drag-over-bottom", after);
+      });
+      btn.addEventListener("dragleave", () => {
+        btn.classList.remove("drag-over-top", "drag-over-bottom");
+      });
+      btn.addEventListener("drop", (e) => {
+        if (dragKind !== "session" || !dragSessionId || dragSessionId === s.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = btn.getBoundingClientRect();
+        const after = e.clientY > rect.top + rect.height / 2;
+        const fromIdx = sessions.findIndex((x) => x.id === dragSessionId);
+        if (fromIdx === -1) return;
+        const [moved] = sessions.splice(fromIdx, 1);
+        const prevProject = moved.project;
+        moved.project = s.project;
+        let toIdx = sessions.findIndex((x) => x.id === s.id);
+        if (toIdx === -1) toIdx = sessions.length;
+        else if (after) toIdx += 1;
+        sessions.splice(toIdx, 0, moved);
+        dragKind = null;
+        dragSessionId = null;
+        clearDragIndicators();
+        renderSidebar();
+        renderHeader();
+        void persistSessionOrder(prevProject !== moved.project ? { [moved.id]: moved.project } : undefined);
+      });
 
       const hostBadge = s.host !== "local" ? `<span class="host-tag">${escapeHtml(s.host)}</span>` : "";
       const agentLabel = AGENT_META.find((a) => a.id === s.agent)?.label ?? s.agent;
@@ -1243,7 +1430,7 @@ newSessionFormEl.addEventListener("submit", async (e) => {
   });
   const data = (await res.json()) as { session: SessionView };
   closeModal();
-  sessions.unshift(data.session);
+  sessions.push(data.session);
   selectSession(data.session.id);
 });
 
@@ -1372,7 +1559,7 @@ document.getElementById("btn-spawn-shell")!.addEventListener("click", async () =
     }),
   });
   const data = (await res.json()) as { session: SessionView };
-  sessions.unshift(data.session);
+  sessions.push(data.session);
   selectSession(data.session.id);
 });
 

@@ -358,10 +358,44 @@ function createServerHandlers(isRemoteListener: boolean) {
         customResumeCommand: body.customResumeCommand,
       });
 
-      sessions.unshift(record);
+      sessions.push(record);
       saveSessions(sessions);
       ptyManager.broadcastEvent({ type: "sessions_changed" });
       return json({ session: toSessionView(record) }, 201);
+    }
+
+    if (pathname === "/api/sessions/order" && req.method === "PUT") {
+      const body = (await req.json()) as {
+        ids?: string[];
+        projectUpdates?: Record<string, string>;
+      };
+      if (body.projectUpdates && typeof body.projectUpdates === "object") {
+        for (const [id, proj] of Object.entries(body.projectUpdates)) {
+          const s = sessions.find((x) => x.id === id);
+          if (s && typeof proj === "string" && proj.trim()) {
+            s.project = proj.trim();
+          }
+        }
+      }
+      if (Array.isArray(body.ids)) {
+        const byId = new Map(sessions.map((s) => [s.id, s]));
+        const next: SessionRecord[] = [];
+        for (const id of body.ids) {
+          const item = byId.get(id);
+          if (item) {
+            next.push(item);
+            byId.delete(id);
+          }
+        }
+        for (const leftover of byId.values()) {
+          next.push(leftover);
+        }
+        sessions.length = 0;
+        sessions.push(...next);
+      }
+      saveSessions(sessions);
+      ptyManager.broadcastEvent({ type: "sessions_changed" });
+      return json({ sessions: sessions.map(toSessionView) });
     }
 
     const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(pathname);

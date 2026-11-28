@@ -23,6 +23,7 @@ export interface UiPrefs {
   notifyOnExit?: boolean;
   notifyOnBell?: boolean;
   allowOpenUrl?: boolean;
+  groupOrder?: string[];
 }
 
 export interface TermdeckConfig {
